@@ -38,3 +38,6 @@ _write_*.py
 _helper.py
 _b64decode.py
 check_sprites.py
+
+# Agent memory files
+.agent-memory/
