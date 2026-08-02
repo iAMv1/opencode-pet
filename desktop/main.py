@@ -166,13 +166,14 @@ PET_STATES = [
     {"id": "jumping", "row": 4, "frames": 5, "durationMs": 840},
     {"id": "failed", "row": 5, "frames": 8, "durationMs": 1220},
     {"id": "waiting", "row": 6, "frames": 6, "durationMs": 1010},
+    {"id": "walking", "row": 7, "frames": 6, "durationMs": 820},
     {"id": "running", "row": 7, "frames": 6, "durationMs": 820},
     {"id": "review", "row": 8, "frames": 6, "durationMs": 1030},
 ]
 DEFAULT_MAP = {
-    "idle": "idle", "busy": "running", "thinking": "review",
-    "error": "failed", "success": "jumping", "celebrating": "waving",
-    "stale": "waiting", "waiting": "waiting",
+    "idle": "idle", "busy": "walking", "thinking": "review",
+    "error": "failed", "success": "jumping",
+    "waiting": "waiting",
 }
 
 
@@ -262,6 +263,7 @@ class PetWindow:
         self._down_pt = None
         self._down_t = 0.0
         self._last_click = None
+        self._click_timer = None
         self._create()
         self._register_hotkeys()
 
@@ -350,10 +352,25 @@ class PetWindow:
         dbl = user32.GetDoubleClickTime() / 1000.0
         if self._last_click and now - self._last_click[0] < dbl \
                 and abs(self._last_click[1] - pt.x) < 8 and abs(self._last_click[2] - pt.y) < 8:
+            # Double-click detected — cancel pending poke and fire jump
             self._last_click = None
+            if self._click_timer:
+                self._click_timer.cancel()
+                self._click_timer = None
             eng.jump()
         else:
             self._last_click = (now, pt.x, pt.y)
+            # Delay poke() until we're sure this isn't the first click of a double-click
+            if self._click_timer:
+                self._click_timer.cancel()
+            self._click_timer = threading.Timer(
+                dbl, self._fire_poke, args=(eng,))
+            self._click_timer.start()
+
+    def _fire_poke(self, eng):
+        self._click_timer = None
+        if self._last_click is not None:
+            self._last_click = None
             eng.poke()
 
     def _ensure_dib(self, w, h):
@@ -387,7 +404,6 @@ class PetWindow:
             ctypes.byref(POINT(int(x), int(y))),
             ctypes.byref(SIZE(w, h)),
             self._memdc, ctypes.byref(POINT(0, 0)), 0, ctypes.byref(blend), ULW_ALPHA)
-        user32.ReleaseDC(None, screendc)
 
     def move(self, x, y):
         """Position-only move: SetWindowPos, far cheaper than UpdateLayeredWindow."""
@@ -555,6 +571,7 @@ class PetEngine:
         self._prev_tool = ""
         self._last_active_min = 0.0
         self._last_poke_log = 0.0
+        self._stale_emotion = None   # BUG-3: preserve last emotion across stale boundary
         self.break_min = int(self.cfg.get("breakMin", 50))
         self.focus_start = None
         self._break_shown = False
@@ -726,22 +743,33 @@ class PetEngine:
         except Exception:
             pass
 
-    def _state(self):
+    def _raw_state(self):
         st = self.sessions[0] if self.sessions else None
-        fresh = st and not st.get("stale")
-        if fresh:
-            return st.get("state") or "idle"
-        return "busy" if self.os_active else "waiting"
+        if st and not st.get("stale"):
+            return st.get("state")   # may be None
+        return None
+
+    def _state(self):
+        raw = self._raw_state()
+        if raw is not None:
+            return raw
+        # BUG-3: use preserved stale emotion before falling back to busy/waiting
+        return self._stale_emotion or ("busy" if self.os_active else "waiting")
 
     def _anim_id(self):
         our = self._state()
         m = self.pet.get("map") or DEFAULT_MAP
         if not self.phys["grounded"]:
-            return "jumping"
+            if any(s["id"] == "jumping" for s in pet_states(self.pet)):
+                return "jumping"
+            # fall through to map lookup instead
         if time.time() < self.attention_until and any(s["id"] == "waving" for s in pet_states(self.pet)):
             return "waving"
         if self.phys["mode"] == "walk" and self.phys["vx"] != 0:
-            return "running-left" if self.phys["vx"] < 0 else "running-right"
+            if self.phys["vx"] < 0 and any(s["id"] == "running-left" for s in pet_states(self.pet)):
+                return "running-left"
+            if any(s["id"] == "running-right" for s in pet_states(self.pet)):
+                return "running-right"
         if our == "busy" and self.sessions:
             d = self.sessions[0].get("direction")
             if d == "left" and any(s["id"] == "running-left" for s in pet_states(self.pet)):
@@ -879,6 +907,11 @@ class PetEngine:
             self.win.move(px, py)
 
     def update_sessions(self, sessions):
+        # BUG-3: capture last-known emotion before sessions go stale
+        if self.sessions and not sessions:
+            self._stale_emotion = self._state()
+        elif sessions and not self.sessions:
+            self._stale_emotion = None
         self.sessions = sessions
 
     def config_watch(self):
@@ -1276,7 +1309,8 @@ def main():
                         last_prune = time.time()
                         engine._prune_status()
             except Exception:
-                pass
+                import traceback
+                traceback.print_exc()
             time.sleep(5)
             engine.update_sessions(read_status())
             engine.config_watch()
