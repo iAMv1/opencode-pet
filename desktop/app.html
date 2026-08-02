@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCode Pet</title>
+<style>
+  :root {
+    --bg0: #0c0c0e;
+    --bg1: #141417;
+    --bg2: #1b1b1f;
+    --bg3: #212126;
+    --border: #26262c;
+    --border2: #34343c;
+    --text: #ececea;
+    --text2: #a3a3aa;
+    --text3: #78787f;
+    --accent: #e2a23c;
+    --accent-ink: #1c1505;
+    --ok: #5dd79b;
+    --warn: #e5b567;
+    --danger: #f1787f;
+    --thinking: #5db9d8;
+    --idle: #6f6f77;
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 7px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --nav: 212px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background: radial-gradient(120% 100% at 100% -10%, #16161a 0%, var(--bg0) 55%);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font: inherit; color: inherit; }
+
+  .app { display: flex; height: 100vh; animation: appIn 0.2s var(--ease); }
+  @keyframes appIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ============ sidebar ============ */
+  .nav {
+    width: var(--nav); flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.015);
+    padding: 16px 12px 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; }
+  .dot {
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, #f3c06a 0%, var(--accent) 55%, #c07f2a 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 2px 10px rgba(226, 162, 60, 0.35);
+    position: relative;
+  }
+  .dot::after {
+    content: ""; position: absolute; left: 6px; top: 6px; width: 5px; height: 5px;
+    border-radius: 50%; background: #fff; box-shadow: 9px 0 0 #fff, 4px 8px 0 #fff;
+  }
+  .brand h1 { font-size: 13.5px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--text3); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 8px 10px; margin-bottom: 2px;
+    background: none; border: none; border-radius: var(--r-md);
+    color: var(--text2); font-size: 13px; text-align: left; cursor: pointer;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+    position: relative;
+  }
+  .nav-item:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+  .nav-item:active { transform: scale(0.98); }
+  .nav-item[aria-current="page"] { background: rgba(226, 162, 60, 0.08); color: var(--text); }
+  .nav-item[aria-current="page"]::before {
+    content: ""; position: absolute; left: -12px; top: 6px; bottom: 6px; width: 3px;
+    border-radius: 2px; background: var(--accent);
+  }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .nav-item[aria-current="page"] svg { color: var(--accent); }
+
+  .nav-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+  .quit-zone { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+  #quit {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 10px; border-radius: var(--r-sm);
+    background: none; border: 1px solid transparent;
+    color: var(--text3); font-size: 12px; cursor: pointer;
+    transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.1s var(--ease);
+  }
+  #quit svg { width: 13px; height: 13px; }
+  #quit:hover { color: var(--danger); background: rgba(241, 120, 127, 0.07); }
+  #quit:active { transform: scale(0.96); }
+  .quit-confirm { display: flex; align-items: center; gap: 6px; }
+  .qc { font-size: 11.5px; color: var(--text2); }
+  #quitYes, #quitNo { padding: 4px 9px; border-radius: var(--r-sm); font-size: 11.5px; cursor: pointer; }
+  #quitYes { background: var(--danger); border: none; color: #2a0a0d; font-weight: 600; transition: background 0.15s var(--ease), transform 0.1s var(--ease); }
+  #quitYes:hover { background: #ff8a90; }
+  #quitNo { background: none; border: 1px solid var(--border2); color: var(--text2); transition: background 0.15s var(--ease), transform 0.1s var(--ease); }
+  #quitNo:hover { background: rgba(255, 255, 255, 0.05); }
+  #quitYes:active, #quitNo:active { transform: scale(0.96); }
+  .ver { font-size: 10px; color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; }
+
+  /* ============ main ============ */
+  .main { flex: 1; overflow-y: auto; padding: 22px 26px 18px; min-width: 0; }
+  .view { animation: viewIn 0.24s var(--ease); }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .view-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .view-head h2 { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  .view-head .desc { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .live {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums;
+    padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg1);
+  }
+  .live .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: breathe 2.2s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+
+  .sec-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--text3); margin: 6px 0 10px; display: flex; align-items: center; gap: 10px;
+  }
+  .sec-label::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to right, var(--border), transparent); }
+
+  /* dashboard grid */
+  .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 22px; align-items: start; }
+
+  /* sessions feed */
+  .feed { min-width: 0; }
+  .ses {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 4px; border-top: 1px solid var(--border);
+    animation: rowIn 0.3s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+  @keyframes rowIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  .ses:last-child { border-bottom: 1px solid var(--border); }
+  .ses-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin: 0 2px; }
+  .ses-dot[data-state="busy"] { background: var(--accent); box-shadow: 0 0 0 0 rgba(226, 162, 60, 0.4); animation: halo 2s ease-in-out infinite; }
+  .ses-dot[data-state="thinking"] { background: var(--thinking); box-shadow: 0 0 0 0 rgba(93, 185, 216, 0.35); animation: halo 2.4s ease-in-out infinite; }
+  .ses-dot[data-state="error"] { background: var(--danger); }
+  .ses-dot[data-state="success"], .ses-dot[data-state="celebrating"] { background: var(--ok); }
+  .ses-dot[data-state="waiting"], .ses-dot[data-state="stale"] { background: var(--idle); }
+  @keyframes halo { 0% { box-shadow: 0 0 0 0 rgba(226, 162, 60, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(226, 162, 60, 0); } 100% { box-shadow: 0 0 0 0 rgba(226, 162, 60, 0); } }
+
+  .ses-body { flex: 1; min-width: 0; }
+  .ses-title { font-size: 13px; font-weight: 550; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ses-meta {
+    font-size: 11.5px; color: var(--text3); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ses-meta .tool { color: var(--accent); }
+  .ses-time { font-size: 11px; color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  .state-chip {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text2); border: 1px solid var(--border2); margin-left: 8px;
+  }
+  .state-chip.busy { color: #f0bc68; border-color: rgba(226, 162, 60, 0.35); }
+  .state-chip.thinking { color: #8ecbe2; border-color: rgba(93, 185, 216, 0.35); }
+  .state-chip.error { color: var(--danger); border-color: rgba(241, 120, 127, 0.35); }
+  .state-chip.success { color: var(--ok); border-color: rgba(93, 215, 155, 0.35); }
+  .state-chip.waiting { color: var(--text3); }
+
+  /* skeleton */
+  .skel { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-top: 1px solid var(--border); }
+  .skel .sk-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bg3); flex-shrink: 0; }
+  .skel .sk-line { height: 11px; border-radius: 4px; background: linear-gradient(90deg, var(--bg2), var(--bg3), var(--bg2)); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  .skel .sk-line.a { width: 38%; }
+  .skel .sk-line.b { width: 62%; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* empty state */
+  .empty { padding: 44px 20px; text-align: center; color: var(--text3); }
+  .empty .art { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 14px; background: var(--bg2); display: grid; place-items: center; border: 1px solid var(--border); }
+  .empty .art svg { width: 26px; height: 26px; color: var(--text3); }
+  .empty h3 { font-size: 14px; color: var(--text2); font-weight: 600; }
+  .empty p { font-size: 12px; margin-top: 5px; max-width: 34ch; margin-inline: auto; }
+  .empty .hint { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; color: var(--accent); margin-top: 12px; }
+
+  /* error banner */
+  .errbanner {
+    display: flex; gap: 9px; align-items: center;
+    padding: 9px 12px; margin-bottom: 14px; border-radius: var(--r-md);
+    background: rgba(241, 120, 127, 0.07); border: 1px solid rgba(241, 120, 127, 0.25);
+    color: var(--danger); font-size: 12px;
+  }
+
+  /* ============ right rail ============ */
+  .rail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+  .rail-card {
+    background: var(--bg1); border: 1px solid var(--border); border-radius: var(--r-lg);
+    padding: 16px; box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.6);
+  }
+  .rail-pet { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .pv {
+    width: 120px; height: 120px; border-radius: 16px; overflow: hidden;
+    background: radial-gradient(130% 130% at 50% 38%, #211f19 0%, #131312 75%);
+    display: grid; place-items: center;
+  }
+  .pv-strip {
+    width: var(--fw); height: var(--fh);
+    background-image: var(--strip); background-repeat: repeat-x;
+    background-size: var(--tw) var(--fh);
+    animation: pvpan var(--dur) steps(var(--frames)) infinite;
+    image-rendering: pixelated;
+  }
+  @keyframes pvpan { from { background-position: 0 0; } to { background-position: calc(var(--tw) * -1) 0; } }
+  .rail-pet .pet-name { font-size: 14px; font-weight: 600; }
+  .rail-pet .pet-state { font-size: 11.5px; color: var(--text3); }
+
+  .rail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 10px; border-radius: var(--r-md);
+    background: var(--bg2); border: 1px solid var(--border2); color: var(--text2);
+    font-size: 12px; cursor: pointer;
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+  }
+  .btn:hover { background: var(--bg3); border-color: var(--border2); color: var(--text); }
+  .btn:active { transform: scale(0.97); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn.wide { grid-column: 1 / -1; }
+  .btn.warn { color: var(--danger); border-color: rgba(241, 120, 127, 0.25); }
+  .btn.warn:hover { background: rgba(241, 120, 127, 0.07); }
+
+  .rail-stats { display: flex; gap: 8px; }
+  .stat { flex: 1; text-align: center; padding: 10px 6px; background: var(--bg1); border: 1px solid var(--border); border-radius: var(--r-md); }
+  .stat b { display: block; font-size: 17px; font-weight: 650; font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat.busy b { color: var(--accent); }
+  .stat.think b { color: var(--thinking); }
+  .stat.total b { color: var(--text); }
+
+  /* ============ pets & behavior view ============ */
+  #pets { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 22px; }
+  .pet-card {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 10px 4px 11px; background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--r-lg); cursor: pointer; color: var(--text2);
+    transition: border-color 0.18s var(--ease), background 0.18s var(--ease), transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  }
+  .pet-card:hover { background: var(--bg2); border-color: var(--border2); transition-duration: 0.09s; }
+  .pet-card:active { transform: scale(0.97); transition-duration: 0.08s; }
+  .pet-card[aria-checked="true"] {
+    background: #1d1a12; border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(226, 162, 60, 0.3), 0 10px 28px -14px rgba(226, 162, 60, 0.45);
+  }
+  .pet-card[aria-checked="true"] .name { color: var(--text); }
+  .pet-card .small-pv {
+    width: 64px; height: 64px; border-radius: 9px; overflow: hidden;
+    background: radial-gradient(130% 130% at 50% 38%, #1f1d17 0%, #131312 75%);
+    display: grid; place-items: center;
+  }
+  .pet-card::after {
+    content: ""; position: absolute; top: 6px; right: 6px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.4 8.2l2.2 2.2 5-5' fill='none' stroke='%231c1505' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 13px 13px no-repeat;
+    pointer-events: none; opacity: 0; transform: scale(0.6);
+    transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  }
+  .pet-card[aria-checked="true"]::after { opacity: 1; transform: scale(1); }
+  .name { font-size: 11.5px; line-height: 1.2; }
+
+  .behavior { max-width: 560px; display: flex; flex-direction: column; gap: 18px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .lab { font-size: 13px; color: var(--text); }
+  .hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .val { font-size: 12px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .range-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: -2px; }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 24px;
+    background: transparent; cursor: pointer; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 3px;
+    background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--border) var(--fill, 50%));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    transition: transform 0.12s var(--ease);
+  }
+  input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
+
+  .switch {
+    position: relative; width: 42px; height: 25px; border-radius: 13px;
+    background: #2b2b31; border: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+    transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px;
+    border-radius: 50%; background: #b9b9be;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.18s cubic-bezier(0.25, 0.1, 0.25, 1), background 0.18s var(--ease);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(17px); background: #fff; }
+  .switch:active::after { transform: scale(0.9); transition-duration: 0.06s; }
+  .switch[aria-checked="true"]:active::after { transform: translateX(17px) scale(0.9); transition-duration: 0.06s; }
+
+  /* wellbeing */
+  .wb-row { display: flex; align-items: center; gap: 12px; padding: 6px 4px; border-top: 1px solid var(--border); }
+  .wb-row:last-child { border-bottom: 1px solid var(--border); }
+  .wb-app { width: 150px; font-size: 12.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wb-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden; }
+  .wb-bar span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, rgba(226, 162, 60, 0.45), var(--accent)); transition: width 0.5s var(--ease); }
+  .wb-min { width: 46px; text-align: right; font-size: 11px; color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  /* status toast */
+  #status {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--text); background: var(--bg2);
+    border: 1px solid var(--border2); border-radius: 999px; padding: 7px 16px;
+    box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.7);
+    opacity: 0; pointer-events: none; transition: opacity 0.25s var(--ease), transform 0.25s var(--ease);
+    z-index: 10;
+  }
+  #status.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #status[data-kind="ok"] { color: var(--ok); }
+  #status[data-kind="error"] { color: var(--danger); }
+  #status[data-kind="warn"] { color: var(--warn); }
+
+  /* demo mode */
+  body.demo .view-head .desc::after {
+    content: " — preview mode, no live pet"; color: var(--warn);
+  }
+
+  /* a11y */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pv-strip { animation: none; background-position: 0 0; }
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    input[type="range"]::-webkit-slider-thumb { transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="dialog" aria-modal="false" aria-label="OpenCode Pet">
+    <aside class="nav">
+      <div class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        <div>
+          <h1>OpenCode Pet</h1>
+          <div class="sub" id="sub">Your companion</div>
+        </div>
+      </div>
+
+      <nav aria-label="Primary">
+        <button class="nav-item" data-view="dash" aria-current="page">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>
+          Dashboard
+        </button>
+        <button class="nav-item" data-view="pets">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.6"/><circle cx="11.5" cy="6" r="1.6"/><circle cx="6.5" cy="3.2" r="1.5"/><circle cx="9.5" cy="3.2" r="1.5"/><path d="M5.2 7.8c1.2 1 4.4 1 5.6 0M4.5 9.2c.4 2.2 1.6 3.2 3.5 3.2s3.1-1 3.5-3.2"/></svg>
+          Pets &amp; Behavior
+        </button>
+      </nav>
+
+      <div class="nav-foot">
+        <span class="quit-zone">
+          <button id="quit">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.2A6 6 0 1 0 10 2.2"/><path d="M8 1v7"/></svg>
+            Quit
+          </button>
+          <span class="quit-confirm" id="quitConfirm" hidden>
+            <span class="qc">Quit app?</span>
+            <button id="quitYes">Yes</button>
+            <button id="quitNo">No</button>
+          </span>
+        </span>
+        <span class="ver">v0.2</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- DASHBOARD -->
+      <section class="view" id="view-dash" aria-labelledby="dash-title">
+        <div class="view-head">
+          <div>
+            <h2 id="dash-title">Dashboard</h2>
+            <div class="desc">Live sessions across your opencode work</div>
+          </div>
+          <div class="live"><span class="pulse" aria-hidden="true"></span><span id="liveCount">—</span></div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="feed">
+            <div class="sec-label">Sessions</div>
+            <div id="sessions"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Recent activity</div>
+            <div id="activity"></div>
+
+            <div class="sec-label" style="margin-top: 24px">App time today</div>
+            <div id="wellbeing"></div>
+          </div>
+
+          <aside class="rail" aria-label="Pet overview">
+            <div class="rail-card rail-pet">
+              <div class="pv"><span class="pv-strip" id="railStrip" hidden></span><span id="railPh">…</span></div>
+              <div>
+                <div class="pet-name" id="railName">—</div>
+                <div class="pet-state" id="railState">no sessions</div>
+              </div>
+            </div>
+            <div class="rail-stats">
+              <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
+              <div class="stat think"><b id="stThink">0</b><span>thinking</span></div>
+              <div class="stat total"><b id="stTotal">0</b><span>sessions</span></div>
+            </div>
+            <div class="rail-actions">
+              <button class="btn" id="prevPet" title="Previous pet">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"/></svg>
+                Prev pet
+              </button>
+              <button class="btn" id="nextPet" title="Next pet">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 5 5-5 5"/></svg>
+                Next pet
+              </button>
+              <button class="btn wide" id="vis">Hide pet</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- PETS & BEHAVIOR -->
+      <section class="view" id="view-pets" aria-labelledby="pets-title" hidden>
+        <div class="view-head">
+          <div>
+            <h2 id="pets-title">Pets &amp; Behavior</h2>
+            <div class="desc">Pick your companion and how it moves</div>
+          </div>
+        </div>
+
+        <div class="sec-label">Pet</div>
+        <div id="pets" role="radiogroup" aria-label="Pet"></div>
+
+        <div class="sec-label">Behavior</div>
+        <div class="behavior">
+          <div>
+            <div class="row">
+              <div>
+                <label class="lab" for="walk">Walking activity</label>
+                <div class="hint">How often your pet wanders the desktop</div>
+              </div>
+              <span class="val" id="walkVal">100%</span>
+            </div>
+            <input type="range" id="walk" min="0" max="100" step="1" value="100" aria-label="Walking activity">
+            <div class="range-ends" aria-hidden="true"><span>Stays put</span><span>Constantly moving</span></div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Keep above other windows</span>
+              <div class="hint">The pet stays visible over your apps</div>
+            </div>
+            <button class="switch" id="top" role="switch" aria-checked="true" aria-label="Keep the pet above other windows"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Show pet on desktop</span>
+              <div class="hint">Hide or show without quitting</div>
+            </div>
+            <button class="switch" id="vis2" role="switch" aria-checked="true" aria-label="Show or hide the pet on the desktop"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Break reminder</span>
+              <div class="hint">A nudge after a long focus streak</div>
+            </div>
+            <button class="switch" id="brk" role="switch" aria-checked="false" aria-label="Break reminder"></button>
+          </div>
+          <div id="brkRow" hidden>
+            <div class="row">
+              <span class="lab">After</span>
+              <span class="val" id="brkVal">50 min</span>
+            </div>
+            <input type="range" id="brkMin" min="20" max="120" step="5" value="50" aria-label="Break reminder minutes">
+            <div class="range-ends" aria-hidden="true"><span>20 min</span><span>2 hours</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      "use strict";
+      var api = null;
+      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, pets: [], petName: "", stateLabel: "", view: "dash" };
+      var saveTimer = null;
+      var toastTimer = null;
+
+      var statusEl = document.getElementById("status");
+      var subEl = document.getElementById("sub");
+
+      var STATE_LABELS = {
+        idle: "idle", busy: "working", thinking: "thinking", error: "stuck",
+        success: "done", celebrating: "celebrating", waiting: "waiting"
+      };
+      var STATE_KEYS = { idle: "idle", busy: "busy", thinking: "thinking", error: "error", success: "success", celebrating: "success", waiting: "waiting", stale: "waiting" };
+
+      function whenBridge(timeoutMs) {
+        return new Promise(function (resolve) {
+          var get = function () { return window.pywebview && window.pywebview.api; };
+          if (get()) return resolve(get());
+          var done = false;
+          function ok() {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve(get());
+          }
+          window.addEventListener("pywebviewready", ok);
+          var timer = setTimeout(ok, timeoutMs);
+        });
+      }
+
+      function toast(msg, kind) {
+        statusEl.textContent = msg;
+        statusEl.dataset.kind = kind || "";
+        statusEl.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+        statusEl.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { statusEl.classList.remove("show"); }, 2200);
+      }
+
+      function updateSub() {
+        if (!api) { subEl.textContent = "Your companion"; return; }
+        var label = STATE_LABELS[state.stateLabel] || state.stateLabel || "";
+        subEl.textContent = state.petName ? (state.petName + (label ? " \u2014 " + label : "")) : "OpenCode Pet";
+      }
+
+      function timeAgo(ms) {
+        if (!ms) return "";
+        var s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+        if (s < 5) return "now";
+        if (s < 60) return s + "s ago";
+        var m = Math.floor(s / 60);
+        if (m < 60) return m + "m ago";
+        var h = Math.floor(m / 60);
+        return h + "h ago";
+      }
+
+      /* ---------- dashboard: sessions ---------- */
+      var _sessSig = "";
+      function renderSessions(list) {
+        var wrap = document.getElementById("sessions");
+        var liveCount = document.getElementById("liveCount");
+        var busy = 0, think = 0;
+        (list || []).forEach(function (s) {
+          var key = STATE_KEYS[s.state || "idle"] || "idle";
+          if (key === "busy") busy++;
+          if (key === "thinking") think++;
+        });
+        document.getElementById("stBusy").textContent = String(busy);
+        document.getElementById("stThink").textContent = String(think);
+        document.getElementById("stTotal").textContent = String(list ? list.length : 0);
+        liveCount.textContent = (busy + think) ? (busy + think) + " active"
+          : (list && list.length ? list.length + " idle" : "no sessions");
+
+        var sig = JSON.stringify(list || []);
+        if (sig === _sessSig) { updateTimes(list || []); return; }
+        _sessSig = sig;
+
+        if (!list || !list.length) {
+          wrap.innerHTML =
+            '<div class="empty"><div class="art" aria-hidden="true">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V9l8-5 8 5v8"/><path d="M9 17v-4h6v4"/></svg>' +
+            '</div><h3>No active sessions</h3>' +
+            '<p>Start a session in opencode and your pet will react to it live.</p>' +
+            '<div class="hint">$ opencode</div></div>';
+          return;
+        }
+
+        var rows = "";
+        list.forEach(function (s, i) {
+          var st = s.state || "idle";
+          var key = STATE_KEYS[st] || "idle";
+          var label = STATE_LABELS[st] || st;
+          var title = s.title || s.cwd || s.sessionID || "Session";
+          var tool = s.toolLabel ? '<span class="tool">' + esc(s.toolLabel) + "</span>" : "";
+          var meta = tool + (s.message ? " \u00b7 " + esc(s.message) : "");
+          if (!meta) meta = '<span style="color:var(--text3)">' + esc(label) + "</span>";
+          var stale = s.stale ? " (stale)" : "";
+          rows +=
+            '<div class="ses" style="--i:' + i + '">' +
+            '<span class="ses-dot" data-state="' + esc(key) + '"></span>' +
+            '<div class="ses-body">' +
+            '<div class="ses-title">' + esc(title) + '<span class="state-chip ' + key + '">' + esc(label) + stale + '</span></div>' +
+            '<div class="ses-meta">' + meta + '</div>' +
+            '</div>' +
+            '<span class="ses-time">' + timeAgo(s.updatedAt) + '</span>' +
+            '</div>';
+        });
+
+        wrap.innerHTML = rows;
+      }
+
+      function updateTimes(list) {
+        var spans = document.querySelectorAll("#sessions .ses-time");
+        list.forEach(function (s, i) {
+          if (spans[i]) spans[i].textContent = timeAgo(s.updatedAt);
+        });
+      }
+
+      function renderSkeleton() {
+        var s = "";
+        for (var i = 0; i < 4; i++) s += '<div class="skel"><span class="sk-dot"></span><span class="sk-line a"></span></div>';
+        document.getElementById("sessions").innerHTML = s;
+      }
+
+      function esc(v) {
+        return String(v).replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+
+      /* ---------- rail pet preview ---------- */
+      function renderRailPet() {
+        var p = state.pets[state.petIdx];
+        var strip = document.getElementById("railStrip");
+        var ph = document.getElementById("railPh");
+        if (p && p.strip) {
+          strip.hidden = false;
+          ph.hidden = true;
+          strip.style.setProperty("--fw", p.frameW + "px");
+          strip.style.setProperty("--fh", p.frameH + "px");
+          strip.style.setProperty("--tw", (p.frameW * p.frames) + "px");
+          strip.style.setProperty("--dur", p.durationMs + "ms");
+          strip.style.setProperty("--frames", p.frames);
+          strip.style.setProperty("--strip", "url(" + p.strip + ")");
+        } else {
+          strip.hidden = true;
+          ph.hidden = false;
+        }
+        document.getElementById("railName").textContent = p ? p.name : "\u2014";
+      }
+
+      function renderRailState() {
+        var label = STATE_LABELS[state.stateLabel] || state.stateLabel || "no sessions";
+        document.getElementById("railState").textContent = state.petName + " \u2014 " + label;
+      }
+
+      /* ---------- pets & behavior view ---------- */
+      function renderPets() {
+        var grid = document.getElementById("pets");
+        grid.innerHTML = "";
+        state.pets.forEach(function (p, i) {
+          var card = document.createElement("button");
+          card.type = "button";
+          card.className = "pet-card";
+          card.setAttribute("role", "radio");
+          card.setAttribute("aria-checked", String(i === state.petIdx));
+          card.tabIndex = i === state.petIdx ? 0 : -1;
+          card.setAttribute("aria-label", p.name);
+
+          var pv = document.createElement("span");
+          pv.className = "small-pv";
+          if (p.strip) {
+            var st = document.createElement("span");
+            st.className = "pv-strip";
+            st.style.setProperty("--fw", p.frameW + "px");
+            st.style.setProperty("--fh", p.frameH + "px");
+            st.style.setProperty("--tw", (p.frameW * p.frames) + "px");
+            st.style.setProperty("--dur", p.durationMs + "ms");
+            st.style.setProperty("--frames", p.frames);
+            st.style.setProperty("--strip", "url(" + p.strip + ")");
+            pv.appendChild(st);
+          } else {
+            var ph = document.createElement("span");
+            ph.textContent = "?";
+            ph.style.color = "var(--text3)";
+            pv.appendChild(ph);
+          }
+          var name = document.createElement("span");
+          name.className = "name";
+          name.textContent = p.name;
+
+          card.appendChild(pv);
+          card.appendChild(name);
+          card.addEventListener("click", function () { selectPet(i); card.focus(); });
+          grid.appendChild(card);
+        });
+      }
+
+      function updateSelection() {
+        Array.prototype.forEach.call(document.getElementById("pets").children, function (card, i) {
+          var on = i === state.petIdx;
+          card.setAttribute("aria-checked", String(on));
+          card.tabIndex = on ? 0 : -1;
+        });
+      }
+
+      function selectPet(i) {
+        if (state.petIdx === i) return;
+        state.petIdx = i;
+        updateSelection();
+        renderRailPet();
+        queueSave();
+      }
+
+      function moveFocus(i) {
+        selectPet(i);
+        var c = document.getElementById("pets").children[i];
+        if (c) c.focus();
+      }
+
+      function queueSave() {
+        if (!api) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(save, 350);
+      }
+
+      async function save() {
+        if (!api) return;
+        saveTimer = null;
+        try {
+          await api.save_config({ petIdx: state.petIdx, walk: state.walk, alwaysOnTop: state.alwaysOnTop, breakMin: state.breakMin });
+          toast("Saved", "ok");
+        } catch (err) {
+          toast("Couldn\u2019t save settings", "error");
+        }
+      }
+
+      function renderControls() {
+        var rng = document.getElementById("walk");
+        rng.value = state.walk;
+        rng.style.setProperty("--fill", state.walk + "%");
+        document.getElementById("walkVal").textContent = state.walk + "%";
+        document.getElementById("top").setAttribute("aria-checked", String(state.alwaysOnTop));
+        var vis = state.petVisible;
+        document.getElementById("vis").textContent = vis ? "Hide pet" : "Show pet";
+        document.getElementById("vis2").setAttribute("aria-checked", String(vis));
+        var on = state.breakMin > 0;
+        document.getElementById("brk").setAttribute("aria-checked", String(on));
+        document.getElementById("brkRow").hidden = !on;
+        var bm = document.getElementById("brkMin");
+        bm.value = state.breakMin > 0 ? state.breakMin : 50;
+        bm.style.setProperty("--fill", ((state.breakMin > 0 ? state.breakMin : 50) - 20) / 100 * 100 + "%");
+        document.getElementById("brkVal").textContent = (state.breakMin > 0 ? state.breakMin : 50) + " min";
+      }
+
+      /* ---------- nav ---------- */
+      function switchView(name) {
+        state.view = name;
+        document.querySelectorAll(".nav-item").forEach(function (b) {
+          b.setAttribute("aria-current", b.dataset.view === name ? "page" : "");
+        });
+        document.getElementById("view-dash").hidden = name !== "dash";
+        document.getElementById("view-pets").hidden = name !== "pets";
+      }
+
+      document.querySelectorAll(".nav-item").forEach(function (b) {
+        b.addEventListener("click", function () { switchView(b.dataset.view); });
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        if (!document.getElementById("quitConfirm").hidden) { hideConfirm(); return; }
+        if (api) api.hide_control().catch(function () {});
+      });
+
+      document.addEventListener("keydown", function (e) {
+        var grid = document.getElementById("pets");
+        if (state.view !== "pets" || !grid.contains(document.activeElement)) return;
+        var n = grid.children.length;
+        var idx = state.petIdx;
+        var handled = true;
+        switch (e.key) {
+          case "ArrowRight": case "ArrowDown": idx = (idx + 1) % n; break;
+          case "ArrowLeft": case "ArrowUp": idx = (idx + n - 1) % n; break;
+          case "Home": idx = 0; break;
+          case "End": idx = n - 1; break;
+          default: handled = false;
+        }
+        if (handled) { e.preventDefault(); moveFocus(idx); }
+      });
+
+      /* ---------- polling ---------- */
+      function refreshSessions() {
+        if (!api) return;
+        api.get_sessions().then(function (list) {
+          if (Array.isArray(list)) renderSessions(list);
+        }).catch(function () {
+          document.getElementById("liveCount").textContent = "offline";
+        });
+      }
+
+      var _actSig = "";
+      function renderActivity(list) {
+        var wrap = document.getElementById("activity");
+        var sig = JSON.stringify(list || []);
+        if (sig === _actSig) { updateActTimes(list || []); return; }
+        _actSig = sig;
+        if (!list || !list.length) {
+          wrap.innerHTML = '<div class="empty" style="padding:22px 12px"><p>The pet\u2019s memory starts here \u2014 state, tools, and breaks.</p></div>';
+          return;
+        }
+        var rows = "";
+        var recent = list.slice().reverse().slice(0, 12);
+        recent.forEach(function (e, i) {
+          var text = "", cls = "idle";
+          if (e.kind === "state") {
+            text = "state \u2192 " + (STATE_LABELS[e.state] || e.state);
+            cls = STATE_KEYS[e.state] || "idle";
+          } else if (e.kind === "tool") {
+            text = "tool \u00b7 " + e.tool;
+            cls = "busy";
+          } else if (e.kind === "active") {
+            text = "active \u00b7 " + (e.app || "?");
+            cls = "busy";
+          } else if (e.kind === "poke") {
+            text = "poked";
+          } else if (e.kind === "jump") {
+            text = "jumped";
+          } else if (e.kind === "break") {
+            text = "break nudge \u00b7 " + (e.mins || "?") + " min streak";
+            cls = "thinking";
+          } else {
+            text = e.kind;
+          }
+          rows += '<div class="ses" style="--i:' + i + '">' +
+            '<span class="ses-dot" data-state="' + esc(cls) + '"></span>' +
+            '<div class="ses-body"><div class="ses-meta">' + esc(text) + '</div></div>' +
+            '<span class="ses-time">' + timeAgo(Math.floor((e.t || 0) * 1000)) + '</span></div>';
+        });
+        wrap.innerHTML = rows;
+      }
+
+      function updateActTimes(list) {
+        var spans = document.querySelectorAll("#activity .ses-time");
+        var recent = list.slice().reverse().slice(0, 12);
+        recent.forEach(function (e, i) {
+          if (spans[i]) spans[i].textContent = timeAgo(Math.floor((e.t || 0) * 1000));
+        });
+      }
+
+      function refreshActivity() {
+        if (!api) return;
+        api.get_logs(80).then(function (list) {
+          if (Array.isArray(list)) renderActivity(list);
+        }).catch(function () {});
+      }
+
+      function renderWellbeing(list) {
+        var wrap = document.getElementById("wellbeing");
+        if (!list || !list.length) {
+          wrap.innerHTML = '<div class="empty" style="padding:18px 12px"><p>App time starts accruing while you work \u2014 per-app, per day.</p></div>';
+          return;
+        }
+        var max = list[0].seconds || 1;
+        var rows = "";
+        list.forEach(function (w) {
+          var pct = Math.round(w.seconds / max * 100);
+          var mins = Math.max(1, Math.round(w.seconds / 60));
+          rows += '<div class="wb-row">' +
+            '<span class="wb-app" title="' + esc(w.app) + '">' + esc(w.app) + '</span>' +
+            '<span class="wb-bar"><span style="width:' + pct + '%"></span></span>' +
+            '<span class="wb-min">' + mins + 'm</span></div>';
+        });
+        wrap.innerHTML = rows;
+      }
+
+      function refreshWellbeing() {
+        if (!api) return;
+        api.get_wellbeing().then(function (list) {
+          if (Array.isArray(list)) renderWellbeing(list);
+        }).catch(function () {});
+      }
+
+      function refreshConfig() {
+        if (!api || saveTimer) return;
+        api.get_config().then(function (c) {
+          if (!c) return;
+          var i = c.petIdx | 0;
+          if (i !== state.petIdx) { state.petIdx = i; updateSelection(); renderRailPet(); }
+          if (document.activeElement !== document.getElementById("walk")) {
+            if (typeof c.walk === "number" && c.walk !== state.walk) {
+              state.walk = c.walk;
+              var rng = document.getElementById("walk");
+              rng.value = state.walk;
+              rng.style.setProperty("--fill", state.walk + "%");
+              document.getElementById("walkVal").textContent = state.walk + "%";
+            }
+          }
+          if (c.alwaysOnTop != null) state.alwaysOnTop = c.alwaysOnTop;
+          if (c.petVisible != null) state.petVisible = c.petVisible !== false;
+          if (typeof c.breakMin === "number" && document.activeElement !== document.getElementById("brkMin")) {
+            state.breakMin = c.breakMin;
+          }
+          if (c.petName) state.petName = c.petName;
+          if (c.state) state.stateLabel = c.state;
+          renderControls();
+          updateSub();
+          renderRailState();
+        }).catch(function () {});
+      }
+
+      /* ---------- load ---------- */
+      async function load() {
+        api = await whenBridge(1500);
+        if (!api) {
+          document.body.classList.add("demo");
+          state.pets = FALLBACK_PETS.slice();
+          state.petName = "Pikachu";
+          renderPets();
+          renderControls();
+          renderRailPet();
+          renderSessions([]);
+          return;
+        }
+        try {
+          var c = await api.get_config();
+          state.petIdx = c.petIdx || 0;
+          state.walk = typeof c.walk === "number" ? c.walk : 100;
+          state.alwaysOnTop = c.alwaysOnTop !== false;
+          state.petVisible = c.petVisible !== false;
+          state.breakMin = typeof c.breakMin === "number" ? c.breakMin : 50;
+          if (c.petName) state.petName = c.petName;
+          if (c.state) state.stateLabel = c.state;
+        } catch (e) {}
+        try {
+          state.pets = await api.get_previews();
+          if (!state.pets || !state.pets.length) throw new Error("no pets");
+        } catch (e) {
+          state.pets = FALLBACK_PETS.slice();
+        }
+        renderPets();
+        renderControls();
+        renderRailPet();
+        renderRailState();
+        updateSub();
+        renderSkeleton();
+        refreshSessions();
+        refreshActivity();
+        refreshWellbeing();
+      }
+
+      var FALLBACK_PETS = ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat"]
+        .map(function (n, i) { return { id: "p" + i, name: n, strip: null }; });
+
+      document.getElementById("walk").addEventListener("input", function (e) {
+        state.walk = +e.target.value;
+        e.target.style.setProperty("--fill", state.walk + "%");
+        document.getElementById("walkVal").textContent = state.walk + "%";
+        queueSave();
+      });
+
+      document.getElementById("top").addEventListener("click", function () {
+        state.alwaysOnTop = !state.alwaysOnTop;
+        renderControls();
+        queueSave();
+      });
+
+      document.getElementById("brk").addEventListener("click", function () {
+        state.breakMin = state.breakMin > 0 ? 0 : 50;
+        renderControls();
+        queueSave();
+      });
+      document.getElementById("brkMin").addEventListener("input", function (e) {
+        state.breakMin = +e.target.value;
+        document.getElementById("brkVal").textContent = state.breakMin + " min";
+        queueSave();
+      });
+
+      function setPetVisible(next) {
+        state.petVisible = next;
+        renderControls();
+        if (api) toast(next ? "Pet is visible" : "Pet hidden", next ? "" : "warn");
+      }
+
+      document.getElementById("vis").addEventListener("click", async function () {
+        if (!api) { setPetVisible(!state.petVisible); return; }
+        var next = !state.petVisible;
+        try {
+          await (next ? api.show_pet() : api.hide_pet());
+          setPetVisible(next);
+        } catch (err) {
+          toast("Couldn\u2019t toggle the pet", "error");
+        }
+      });
+      document.getElementById("vis2").addEventListener("click", function () {
+        if (!api) { setPetVisible(!state.petVisible); return; }
+        document.getElementById("vis").click();
+      });
+
+      document.getElementById("nextPet").addEventListener("click", async function () {
+        if (!api) return;
+        try { await api.next_pet(); } catch (e) {}
+      });
+      document.getElementById("prevPet").addEventListener("click", async function () {
+        if (!api) return;
+        try { await api.prev_pet(); } catch (e) {}
+      });
+
+      document.getElementById("quit").addEventListener("click", function () {
+        document.getElementById("quit").hidden = true;
+        document.getElementById("quitConfirm").hidden = false;
+        confirmAt = Date.now();
+        document.getElementById("quitYes").focus();
+      });
+      document.getElementById("quitYes").addEventListener("click", function () {
+        if (Date.now() - confirmAt < 500) return;
+        if (api) api.quit().catch(function () {});
+      });
+      document.getElementById("quitNo").addEventListener("click", function () {
+        if (Date.now() - confirmAt < 500) return;
+        hideConfirm();
+      });
+      function hideConfirm() {
+        document.getElementById("quitConfirm").hidden = true;
+        var q = document.getElementById("quit");
+        q.hidden = false;
+        q.focus();
+      }
+      var confirmAt = 0;
+
+      setInterval(refreshSessions, 1500);
+      setInterval(refreshConfig, 2500);
+      setInterval(refreshActivity, 3000);
+      setInterval(refreshWellbeing, 5000);
+      load();
+    })();
+  </script>
+</body>
+</html>

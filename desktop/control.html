@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenCode Pet</title>
+<style>
+  :root {
+    --bg0: #0b0b0f;
+    --bg1: #14141a;
+    --bg2: #1c1c24;
+    --border: #26262f;
+    --border2: #363641;
+    --text: #eaeaf0;
+    --text2: #a3a3b0;
+    --text3: #83838f;
+    --accent: #8181f0;
+    --accent-strong: #a0a0f7;
+    --ok: #57d196;
+    --danger: #f1787f;
+    --warn: #e5b567;
+    --r-lg: 12px;
+    --r-md: 9px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background:
+      radial-gradient(140% 120% at 50% -20%, #16161f 0%, var(--bg0) 60%);
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font: inherit; color: inherit; }
+
+  .app {
+    display: flex; flex-direction: column; height: 100vh;
+    animation: appIn 0.15s ease;
+  }
+  @keyframes appIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 14px 10px 16px; flex-shrink: 0;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .dot {
+    width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0;
+    background: linear-gradient(135deg, #b0b0f8 0%, #7c7cf0 50%, #5b5be6 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 2px 8px rgba(99, 102, 241, 0.45);
+    position: relative;
+  }
+  .dot::after {
+    content: ""; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px;
+    border-radius: 50%; background: #ffffffd9; box-shadow: 8px 0 0 #ffffffd9, 4px 7px 0 #ffffffd9;
+  }
+  .brand h1 { font-size: 13.5px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--text3); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #close {
+    width: 30px; height: 30px; border: none; border-radius: 8px; flex-shrink: 0;
+    background: none; color: var(--text3); font-size: 14px; cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  #close:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+  #close:active { background: rgba(255, 255, 255, 0.11); }
+
+  /* ---------- content ---------- */
+  .content { flex: 1; overflow-y: auto; padding: 2px 16px 8px; }
+
+  .sec {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--text3); margin: 14px 0 10px;
+  }
+  .sec::after { content: ""; flex: 1; height: 1px;
+    background: linear-gradient(to right, var(--border), transparent); }
+
+  /* ---------- pet picker ---------- */
+  #pets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .pet-card {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 9px 6px 10px; background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--r-lg); cursor: pointer; color: var(--text2);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition:
+      border-color 0.18s ease, background 0.18s ease,
+      transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.18s ease;
+  }
+  .pet-card:hover {
+    background: var(--bg2); border-color: var(--border2);
+    transition-duration: 0.09s, 0.09s, 0.18s, 0.18s;
+  }
+  .pet-card:active {
+    transform: scale(0.97);
+    transition-duration: 0.08s;
+    transition-timing-function: ease;
+  }
+  .pet-card[aria-checked="true"] {
+    background: #16162a; border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(129, 129, 240, 0.35), 0 8px 24px -10px rgba(129, 129, 240, 0.4);
+  }
+  .pet-card[aria-checked="true"] .name { color: var(--text); }
+  .pet-card[aria-checked="true"] .pv {
+    background: radial-gradient(130% 130% at 50% 38%, #262642 0%, #14141f 75%);
+  }
+  .pet-card::after {
+    content: ""; position: absolute; top: 7px; right: 7px;
+    width: 17px; height: 17px; border-radius: 50%;
+    background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M4.6 8.7l2.4 2.4 5.4-5.4' fill='none' stroke='%2310101a' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+    pointer-events: none;
+    opacity: 0; transform: scale(0.6);
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  .pet-card[aria-checked="true"]::after { opacity: 1; transform: scale(1); }
+
+  .pv {
+    width: 80px; height: 80px; border-radius: 10px; overflow: hidden;
+    background: radial-gradient(130% 130% at 50% 38%, #1d1d2b 0%, #101018 75%);
+    display: grid; place-items: center;
+  }
+  .pv-strip {
+    width: var(--fw); height: var(--fh);
+    background-image: var(--strip); background-repeat: repeat-x;
+    background-size: var(--tw) var(--fh);
+    animation: pvpan var(--dur) steps(var(--frames)) infinite;
+    image-rendering: pixelated;
+  }
+  .pv-ph { color: var(--text3); font-size: 18px; }
+  @keyframes pvpan { from { background-position: 0 0; } to { background-position: calc(var(--tw) * -1) 0; } }
+
+  .name { font-size: 12px; line-height: 1.2; letter-spacing: 0.01em; }
+
+  /* ---------- behavior ---------- */
+  .behavior { display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .lab { font-size: 13px; color: var(--text); }
+  .hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  .slider-wrap { margin-top: 8px; }
+  .val { font-size: 12px; font-weight: 600; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+  .range-ends {
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: var(--text3); margin-top: -2px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 24px;
+    background: transparent; cursor: pointer; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 3px;
+    background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--border) var(--fill, 50%));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
+
+  /* switch */
+  .switch {
+    position: relative; width: 42px; height: 25px; border-radius: 13px;
+    background: #2b2b35; border: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px;
+    border-radius: 50%; background: #b9b9c4;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.18s cubic-bezier(0.25, 0.1, 0.25, 1), background 0.18s ease;
+  }
+  .switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(17px); background: #fff; }
+  .switch:active::after { transform: scale(0.9); transition-duration: 0.06s; }
+  .switch[aria-checked="true"]:active::after { transform: translateX(17px) scale(0.9); transition-duration: 0.06s; }
+
+  /* ---------- footer ---------- */
+  .footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 10px 16px 12px; }
+  #status {
+    font-size: 12px; color: var(--text3); min-height: 17px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 7px; animation: statusIn 0.2s ease;
+  }
+  #status[data-kind="ok"] { color: var(--ok); }
+  #status[data-kind="warn"] { color: var(--warn); }
+  #status[data-kind="error"] { color: var(--danger); }
+  @keyframes statusIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .quit-row { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+  #quit {
+    padding: 5px 10px; border-radius: 7px;
+    background: transparent; border: 1px solid rgba(241, 120, 127, 0.22);
+    color: var(--text3); font-size: 12px; cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  }
+  #quit:hover { color: var(--danger); border-color: rgba(241, 120, 127, 0.5); background: rgba(241, 120, 127, 0.06); }
+  #quit:active { transform: scale(0.97); }
+  .quit-confirm { display: flex; align-items: center; gap: 8px; }
+  .qc-text { font-size: 12px; color: var(--text2); }
+  #quitYes {
+    padding: 5px 12px; border-radius: 7px; border: none;
+    background: var(--danger); color: #2a0a0d; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  #quitYes:hover { background: #ff8a90; }
+  #quitYes:active { transform: scale(0.97); }
+  #quitNo {
+    padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border2);
+    background: transparent; color: var(--text2); font-size: 12px; cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  #quitNo:hover { background: rgba(255, 255, 255, 0.06); }
+  #quitNo:active { transform: scale(0.97); }
+
+  /* demo mode (no pywebview bridge) */
+  body.demo .content::before {
+    content: "Preview — open via the desktop app for live controls";
+    display: block; font-size: 11px; color: var(--warn);
+    background: rgba(229, 181, 103, 0.08); border: 1px solid rgba(229, 181, 103, 0.22);
+    border-radius: var(--r-md); padding: 8px 10px; margin-bottom: 10px;
+  }
+
+  /* ---------- a11y ---------- */
+  :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pv-strip { animation: none; background-position: 0 0; }
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    input[type="range"]::-webkit-slider-thumb { transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="dialog" aria-modal="false" aria-label="OpenCode Pet settings">
+    <header class="pywebview-drag-region">
+      <div class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        <div>
+          <h1>OpenCode Pet</h1>
+          <div class="sub" id="sub">Your companion for every session</div>
+        </div>
+      </div>
+      <button id="close" aria-label="Close window">✕</button>
+    </header>
+
+    <main class="content">
+      <section aria-label="Choose your pet">
+        <div class="sec">Pet</div>
+        <div id="pets" role="radiogroup" aria-label="Pet"></div>
+      </section>
+
+      <section aria-label="Behavior settings">
+        <div class="sec">Behavior</div>
+        <div class="behavior">
+          <div>
+            <div class="row">
+              <div>
+                <label class="lab" for="walk">Walking activity</label>
+                <div class="hint">How often your pet wanders the desktop</div>
+              </div>
+              <span class="val" id="walkVal">100%</span>
+            </div>
+            <div class="slider-wrap">
+              <input type="range" id="walk" min="0" max="100" step="1" value="100" aria-label="Walking activity">
+              <div class="range-ends" aria-hidden="true"><span>Stays put</span><span>Constantly moving</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Keep above other windows</span>
+              <div class="hint">The pet stays visible over your apps</div>
+            </div>
+            <button class="switch" id="top" role="switch" aria-checked="true" aria-label="Keep the pet above other windows"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Show pet on desktop</span>
+              <div class="hint">Hide or show without quitting</div>
+            </div>
+            <button class="switch" id="vis" role="switch" aria-checked="true" aria-label="Show or hide the pet on the desktop"></button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div id="status" role="status" aria-live="polite"></div>
+      <div class="quit-row">
+        <button id="quit">Quit</button>
+        <span class="quit-confirm" id="quitConfirm" hidden>
+          <span class="qc-text">Quit OpenCode Pet?</span>
+          <button id="quitYes">Yes</button>
+          <button id="quitNo">Cancel</button>
+        </span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+      var api = null;
+      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, pets: [], petName: "", stateLabel: "" };
+      var saveTimer = null;
+
+      var statusEl = document.getElementById("status");
+      var grid = document.getElementById("pets");
+      var subEl = document.getElementById("sub");
+      var confirmEl = document.getElementById("quitConfirm");
+
+      var STATE_LABELS = {
+        idle: "idle", busy: "working", thinking: "thinking", error: "stuck",
+        success: "done", celebrating: "celebrating", waiting: "waiting"
+      };
+
+      /* pywebview injects window.pywebview AFTER the page loads and fires
+         'pywebviewready' (webview/js/finish.js). Never read the bridge at
+         script-eval time — wait for it, then fall back to demo mode. */
+      function whenBridge(timeoutMs) {
+        return new Promise(function (resolve) {
+          var get = function () { return window.pywebview && window.pywebview.api; };
+          if (get()) return resolve(get());
+          var done = false;
+          function ok() {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve(get());
+          }
+          window.addEventListener("pywebviewready", ok);
+          var timer = setTimeout(ok, timeoutMs);
+        });
+      }
+
+      function setStatus(msg, kind) {
+        statusEl.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+        statusEl.textContent = msg;
+        statusEl.dataset.kind = kind || "";
+        statusEl.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+        statusEl.style.animation = "none";
+        void statusEl.offsetWidth;
+        statusEl.style.animation = "";
+      }
+
+      function updateSub() {
+        if (!api) { subEl.textContent = "Your companion for every session"; return; }
+        var label = STATE_LABELS[state.stateLabel] || state.stateLabel || "";
+        subEl.textContent = state.petName ? (state.petName + (label ? " \u2014 " + label : "")) : "OpenCode Pet";
+      }
+
+      function renderPets() {
+        grid.innerHTML = "";
+        state.pets.forEach(function (p, i) {
+          var card = document.createElement("button");
+          card.type = "button";
+          card.className = "pet-card";
+          card.setAttribute("role", "radio");
+          card.setAttribute("aria-checked", String(i === state.petIdx));
+          card.tabIndex = i === state.petIdx ? 0 : -1;
+          card.setAttribute("aria-label", p.name);
+
+          var pv = document.createElement("span");
+          pv.className = "pv";
+          if (p.strip) {
+            var st = document.createElement("span");
+            st.className = "pv-strip";
+            st.style.setProperty("--fw", p.frameW + "px");
+            st.style.setProperty("--fh", p.frameH + "px");
+            st.style.setProperty("--tw", (p.frameW * p.frames) + "px");
+            st.style.setProperty("--dur", p.durationMs + "ms");
+            st.style.setProperty("--frames", p.frames);
+            st.style.setProperty("--strip", "url(" + p.strip + ")");
+            pv.appendChild(st);
+          } else {
+            var ph = document.createElement("span");
+            ph.className = "pv-ph";
+            ph.textContent = "?";
+            pv.appendChild(ph);
+          }
+
+          var name = document.createElement("span");
+          name.className = "name";
+          name.textContent = p.name;
+
+          card.appendChild(pv);
+          card.appendChild(name);
+          card.addEventListener("click", function () { selectPet(i); card.focus(); });
+          grid.appendChild(card);
+        });
+      }
+
+      function updateSelection() {
+        Array.prototype.forEach.call(grid.children, function (card, i) {
+          var on = i === state.petIdx;
+          card.setAttribute("aria-checked", String(on));
+          card.tabIndex = on ? 0 : -1;
+        });
+      }
+
+      function selectPet(i) {
+        if (state.petIdx === i) return;
+        state.petIdx = i;
+        updateSelection();
+        queueSave();
+      }
+
+      function moveFocus(i) {
+        selectPet(i);
+        var c = grid.children[i];
+        if (c) c.focus();
+      }
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          if (!confirmEl.hidden) { hideConfirm(); return; }
+          if (api) api.hide_control().catch(function () {});
+          return;
+        }
+        if (!grid.contains(document.activeElement)) return;
+        var n = grid.children.length;
+        var idx = state.petIdx;
+        var handled = true;
+        switch (e.key) {
+          case "ArrowRight": case "ArrowDown": idx = (idx + 1) % n; break;
+          case "ArrowLeft": case "ArrowUp": idx = (idx + n - 1) % n; break;
+          case "Home": idx = 0; break;
+          case "End": idx = n - 1; break;
+          default: handled = false;
+        }
+        if (handled) { e.preventDefault(); moveFocus(idx); }
+      });
+
+      function queueSave() {
+        if (!api) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(save, 350);
+      }
+
+      async function save() {
+        if (!api) return;
+        saveTimer = null;
+        try {
+          await api.save_config({
+            petIdx: state.petIdx,
+            walk: state.walk,
+            alwaysOnTop: state.alwaysOnTop
+          });
+          setStatus("Saved", "ok");
+          setTimeout(function () { if (statusEl.textContent === "Saved") setStatus(""); }, 1800);
+        } catch (err) {
+          setStatus("Couldn\u2019t save settings", "error");
+        }
+      }
+
+      function render() {
+        var rng = document.getElementById("walk");
+        rng.value = state.walk;
+        rng.style.setProperty("--fill", state.walk + "%");
+        document.getElementById("walkVal").textContent = state.walk + "%";
+        document.getElementById("top").setAttribute("aria-checked", String(state.alwaysOnTop));
+        document.getElementById("vis").setAttribute("aria-checked", String(state.petVisible));
+      }
+
+      function syncPetVisible(vis) {
+        state.petVisible = vis;
+        document.getElementById("vis").setAttribute("aria-checked", String(vis));
+        if (!statusEl.textContent) setStatus(vis ? "" : "Pet hidden", vis ? "" : "warn");
+      }
+
+      var rng = document.getElementById("walk");
+
+      /* Re-read config so tray actions (hide/show pet, next pet) stay reflected. */
+      function refresh() {
+        if (!api || saveTimer) return;
+        api.get_config().then(function (c) {
+          if (!c) return;
+          var i = c.petIdx | 0;
+          if (i !== state.petIdx) { state.petIdx = i; updateSelection(); }
+          if (document.activeElement !== rng) {
+            if (typeof c.walk === "number" && c.walk !== state.walk) {
+              state.walk = c.walk;
+              rng.value = state.walk;
+              rng.style.setProperty("--fill", state.walk + "%");
+              document.getElementById("walkVal").textContent = state.walk + "%";
+            }
+          }
+          if (c.alwaysOnTop != null && c.alwaysOnTop !== state.alwaysOnTop) {
+            state.alwaysOnTop = c.alwaysOnTop;
+            document.getElementById("top").setAttribute("aria-checked", String(state.alwaysOnTop));
+          }
+          syncPetVisible(c.petVisible !== false);
+          if (c.petName) state.petName = c.petName;
+          if (c.state) state.stateLabel = c.state;
+          updateSub();
+        }).catch(function () {});
+      }
+
+      async function load() {
+        api = await whenBridge(1500);
+        if (!api) {
+          document.body.classList.add("demo");
+          state.pets = FALLBACK_PETS.slice();
+          renderPets();
+          render();
+          updateSub();
+          return;
+        }
+        try {
+          var c = await api.get_config();
+          state.petIdx = c.petIdx || 0;
+          state.walk = typeof c.walk === "number" ? c.walk : 100;
+          state.alwaysOnTop = c.alwaysOnTop !== false;
+          state.petVisible = c.petVisible !== false;
+          if (c.petName) state.petName = c.petName;
+          if (c.state) state.stateLabel = c.state;
+        } catch (e) {}
+        try {
+          state.pets = await api.get_previews();
+          if (!state.pets || !state.pets.length) throw new Error("no pets");
+        } catch (e) {
+          state.pets = FALLBACK_PETS.slice();
+        }
+        renderPets();
+        render();
+        updateSub();
+        if (!state.petVisible) setStatus("Pet hidden", "warn");
+        var sel = grid.querySelector('[aria-checked="true"]');
+        if (sel) sel.focus();
+      }
+
+      var FALLBACK_PETS = ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat"]
+        .map(function (n, i) { return { id: "p" + i, name: n, strip: null }; });
+
+      document.getElementById("walk").addEventListener("input", function (e) {
+        state.walk = +e.target.value;
+        e.target.style.setProperty("--fill", state.walk + "%");
+        document.getElementById("walkVal").textContent = state.walk + "%";
+        queueSave();
+      });
+
+      document.getElementById("top").addEventListener("click", function () {
+        state.alwaysOnTop = !state.alwaysOnTop;
+        render();
+        queueSave();
+      });
+
+      document.getElementById("vis").addEventListener("click", async function () {
+        if (!api) { syncPetVisible(!state.petVisible); return; }
+        var next = !state.petVisible;
+        try {
+          await (next ? api.show_pet() : api.hide_pet());
+          state.petVisible = next;
+          document.getElementById("vis").setAttribute("aria-checked", String(next));
+          setStatus(next ? "Pet is visible" : "Pet hidden", next ? "" : "warn");
+        } catch (err) {
+          setStatus("Couldn\u2019t toggle the pet", "error");
+        }
+      });
+
+      document.getElementById("close").addEventListener("click", function () {
+        if (api) api.hide_control().catch(function () {});
+      });
+
+      var confirmAt = 0;
+      document.getElementById("quit").addEventListener("click", function () {
+        document.getElementById("quit").hidden = true;
+        confirmEl.hidden = false;
+        confirmAt = Date.now();
+        document.getElementById("quitYes").focus();
+      });
+      document.getElementById("quitYes").addEventListener("click", function () {
+        if (Date.now() - confirmAt < 500) return;  // swallow double-click spillover
+        if (api) api.quit().catch(function () {});
+      });
+      document.getElementById("quitNo").addEventListener("click", function () {
+        if (Date.now() - confirmAt < 400) return;
+        hideConfirm();
+      });
+
+      function hideConfirm() {
+        confirmEl.hidden = true;
+        var q = document.getElementById("quit");
+        q.hidden = false;
+        q.focus();
+      }
+
+      function pollTick() {
+        if (document.hidden) return;   // don't poll while the window is hidden
+        refresh();
+      }
+      setInterval(pollTick, 5000);
+      load();
+    })();
+  </script>
+</body>
+</html>

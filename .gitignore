@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+
+# Build outputs
+build/
+dist/
+*.exe
+*.spec
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop/__pycache__/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Performance test files (temporary scripts)
+_perf_*.py
+_stress_*.py
+_write_*.py
+_helper.py
+_b64decode.py
+check_sprites.py
