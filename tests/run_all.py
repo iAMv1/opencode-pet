@@ -4,9 +4,8 @@ Usage:  python tests/run_all.py
 
 Runs:
   1. pytest (engine state machine, config/status, ControlApi, spec contracts)
-  2. dist/server.js plugin contract tests (node)
-  3. frontend JS syntax + HTML structure check
-  4. headless Chrome UI self-test of the dashboard (if Chrome is available)
+  2. frontend JS syntax + HTML structure check
+  3. headless Chrome UI self-test of the dashboard (if Chrome is available)
 
 Exit code 0 = everything passed.
 """
@@ -75,18 +74,6 @@ def main():
     # REAL-bridge browser test: headless Chrome against the actual desktop
     # server (real app.html + real ControlApi + real data files, no mocks).
     ok &= run([sys.executable, "tests/make_real_selftest.py"])
-
-    # node plugin contract tests use a throwaway HOME so they never touch
-    # the real ~/.opencode/pet
-    import tempfile
-    tmp = tempfile.mkdtemp(prefix="pet-test-")
-    env = dict(os.environ, HOME=tmp, USERPROFILE=tmp)
-    r = subprocess.run(["node", "tests/test_server_plugin.mjs"],
-                       cwd=ROOT, capture_output=True, text=True, env=env)
-    tail = (r.stdout + r.stderr).strip()
-    print("\n$ node tests/test_server_plugin.mjs")
-    print(tail[-1200:])
-    ok &= (r.returncode == 0)
 
     print("\n" + ("ALL VALIDATION PASSED" if ok else "VALIDATION FAILURES REMAIN"))
     return 0 if ok else 1

@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HTML_TARGETS = ["desktop/app.html", "desktop/control.html"]
-JS_TARGETS = ["dist/server.js", "dist/tui.js"]
+JS_TARGETS = []  # dist/server.js and dist/tui.js removed in v0.6.0 (dead code)
 
 
 class _Balancer(html.parser.HTMLParser):

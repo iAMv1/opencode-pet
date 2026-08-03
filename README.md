@@ -17,8 +17,29 @@ Native desktop pet for OpenCode. Pixel-art animated pets (petdex-style sprite sh
 
 ## Installation
 
+### Option 1: Download Pre-built Executable (Recommended)
+
+**Download the latest version from [GitHub Releases](https://github.com/iAMv1/opencode-pet/releases):**
+
+1. Go to the [Releases page](https://github.com/iAMv1/opencode-pet/releases)
+2. Download `OpenCodePet.exe` from the latest release (v0.6.0+)
+3. Double-click to run - no installation needed!
+
+**Note**: The executable is built automatically when a new version is tagged. See [RELEASES.md](RELEASES.md) for more details.
+
+### Option 2: Install as OpenCode Plugin
+
 ```bash
 opencode plugin C:\Users\ItzP\projects\opencode-pet -g
+```
+
+### Option 3: Run from Source
+
+```bash
+git clone https://github.com/iAMv1/opencode-pet.git
+cd opencode-pet
+pip install -r desktop/requirements.txt
+python desktop/main.py
 ```
 
 ## Usage
@@ -37,11 +58,9 @@ Run `/pet.open` in any opencode session, or launch `dist\OpenCodePet.exe` direct
 
 ## How it works
 
-- `dist/server.js` - opencode plugin: writes `status-<sessionID>.json` to `~/.opencode/pet/` on every event + 10s heartbeat.
 - `desktop/sprites/*.webp` - pixel-art sprite sheets (petdex format, 1536×1872, 192×208 frames, 8 cols × 9 state rows).
 - `desktop/control.html` - control window UI: pet picker with live animated sprite previews, behavior settings, hide/show/quit. Rendered in a pywebview window.
 - `desktop/main.py` - native app: GDI layered window for the pet (PIL sprite renderer, state machine, physics, speech bubble) + pywebview control window + system tray. Exposes `get_config()`, `get_previews()`, `save_config()`, `hide_pet()`/`show_pet()`, `hide_control()`, `quit()` to the UI.
-- `dist/tui.js` - TUI sidebar pet + `/pet.open` command.
 
 ## Development
 
