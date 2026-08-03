@@ -1,78 +1,88 @@
-﻿# 🐾 OpenCode Pet
+﻿<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="OpenCode Pet - a pixel desktop companion that grows while you focus">
+</p>
 
-```
-██████╗ ██████╗ ███████╗████████╗██████╗  ██████╗ ███████╗
-██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔════╝
-██████╔╝██████╔╝███████╗   ██║   ██████╔╝█████╗  ███████╗
-██╔══██╗██╔═══╝ █══════╝   ██║   ██╔═══╝ ██╔══╝  ╚════██║
-██████╔╝██║     ███████╗   ██║   ██║     ███████╗███████║
-╚═════╝ ╚═╝     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝
-```
+# OpenCode Pet
 
-**Your pixel-perfect desktop companion for OpenCode**
+**Your pixel-perfect desktop companion for OpenCode.** A pixel-art pet lives at the edge of your screen, watches your sessions, and grows through focused work - no polling, no config beyond one run.
 
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/iAMv1/opencode-pet/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-v0.6.0-brightgreen?style=for-the-badge)](https://github.com/iAMv1/opencode-pet/releases/tag/v0.6.0)
 
-```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                                                                              ║
-║   ██████╗ ██████╗ ███████╗████████╗██████╗  ██████╗ ███████╗              ║
-║   ██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔════╝              ║
-║   ██████╔╝██████╔╝███████╗   ██║   ██████╔╝█████╗  ███████╗              ║
-║   ██╔══██╗██╔═══╝ █══════╝   ██║   ██╔═══╝ ██╔══╝  ╚════██║              ║
-║   ██████╔╝██║     ███████╗   ██║   ██║     ███████╗███████║              ║
-║   ╚═════╝ ╚═╝     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝              ║
-║                                                                              ║
-║   ██╗   ██╗███████╗████████╗██████╗  ██████╗ ███████╗                    ║
-║   ██║   ██║██╔════╝╚══██╔══╝██╔══██╗██╔════╝██╔════╝                    ║
-║   ██║   ██║███████╗   ██║   ██████╔╝█████╗  ███████╗                    ║
-║   ╚██╗ ██╔╝╚════██║   ██║   ██╔═══╝ ██╔══╝  ╚════██║                    ║
-║    ╚████╔╝ ███████║   ██║   ██║     ███████╗███████║                    ║
-║     ╚═══╝  ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝                    ║
-║                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-```
+---
+
+## Proof
+
+<p align="center">
+  <img src="./assets/readme/proof/dashboard.png" width="100%" alt="OpenCode Pet focus dashboard showing the pet, energy live pill, streaks and XP">
+</p>
+
+<p align="center">
+  <img src="./assets/readme/proof/control.png" width="100%" alt="OpenCode Pet control window with pet cards on glass shelves">
+</p>
 
 ---
 
-## 🎮 Features
+## What it is
 
-### 🎨 Pixel Art Pets
-Real sprite-sheet frame animation with 6 characters.
+A non-intrusive pet that reacts to real events - no polling loop. It reads OpenCode session status and OS activity the moment things change, with a safety net so it never misses a beat.
 
-### ⚡ Event-Driven Updates
-No polling overhead. Instant status changes with 3-second safety net.
-
-### 🖱️ Interactive Controls
-Click to jump, double-click to wave, hover for controls, drag to move.
-
-### 🎯 Focus Sessions
-Grow your pet through focused work - earn XP, level up, track streaks.
-
-### 🪟 Transparent Window
-Zero background, just the pet floating over your desktop at 30 FPS.
-
-### 🌐 Works With ANY App
-Not just OpenCode! Monitors any app on your system.
+- **Six pixel pets** - real sprite-sheet frame animation
+- **Transparent window** - zero background, just the pet at 30 FPS
+- **Works with any app** - not just OpenCode
+- **Grows with you** - XP, levels and streaks from focused work
 
 ---
 
-## 🚀 Installation
+## Why it is different
 
-### Download Pre-built Executable (Recommended)
+| Instead of | OpenCode Pet |
+|-----------|--------------|
+| Polling overhead | Event-driven updates, instant status change, 3-second safety net |
+| Static icons | Live sprite-sheet animation |
+| Single bucket | 6 pets, 10 reactive states |
+| Code-only | Monitors any app on your system |
 
-**No installation needed - just download and run!**
+---
+
+## Pet states
+
+The pet reacts to your activity in real time.
+
+<p align="center">
+  <img src="./assets/readme/states.svg" width="100%" alt="The seven pet states: idle, running, thinking, success, failed, celebrate and wilt, each with its trigger and animation">
+</p>
+
+---
+
+## How it works
+
+<p align="center">
+  <img src="./assets/readme/architecture.svg" width="100%" alt="Event-driven architecture: OpenCode sessions and OS activity feed the pet engine, which drives a transparent GDI window at 30 frames per second">
+</p>
+
+### Interactions
+
+- Click the pet to make it jump
+- Double-click to wave
+- Hover for controls
+- Drag to move it anywhere
+
+---
+
+## Getting started
+
+**The easy way:** download the prebuilt `.exe`, run it, and the pet appears.
 
 [![Download Latest](https://img.shields.io/badge/Download-OpenCodePet.exe-blue?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D6)](https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet.exe)
 
-**Direct download:** https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet.exe
+Direct: https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet.exe
 
-**File size:** ~50 MB | **Requirements:** Windows 10/11
+**File size:** ~50 MB · **Requirements:** Windows 10/11
 
-### Alternative: Run from Source
+**From source:**
 
 ```bash
 git clone https://github.com/iAMv1/opencode-pet.git
@@ -83,71 +93,28 @@ python desktop/main.py
 
 ---
 
-## 🏗️ How It Works
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    OpenCode Pet Architecture                │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────┐ │
-│  │ OpenCode     │──────▶│ Status Files │──────▶│  Pet     │ │
-│  │ Sessions     │      │ (JSON)       │      │  Engine  │ │
-│  └──────────────┘      └──────────────┘      └────┬─────┘ │
-│         ▲                                            │      │
-│         │                                            ▼      │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────┐ │
-│  │ OS Activity  │──────▶│  Physics +   │◀─────│  GDI     │ │
-│  │ (Any App)    │      │  Animation   │      │  Window  │ │
-│  └──────────────┘      └──────────────┘      └──────────┘ │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🎯 Pet States
-
-The pet reacts to your activity in real-time:
-
-| State | Trigger | Animation |
-|-------|---------|----------|
-| 💤 Idle | No activity | Calm breathing |
-| 🏃 Running | Typing/working | Run animation |
-| 🤔 Thinking | Processing | Review pose |
-| ✅ Success | Task complete | Jump celebration |
-| ❌ Failed | Error occurred | Sad pose |
-| 🎉 Celebrate | Focus complete | Wave + jump |
-| 😢 Wilt | Left during focus | Sad droop |
-
----
-
-## 🛠️ Development
+## Development
 
 ```bash
 npm install
 pip install -r desktop/requirements.txt
 python desktop/main.py
-# rebuild the exe:
-desktop\build.bat
+desktop\build.bat    # rebuild the exe
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 python tests/run_all.py
 ```
 
-- 187 Python tests
-- 67 UI checks
-- 59 backend checks
-- 21 validation tests
+- 187 Python tests · 67 UI checks · 59 backend checks · 21 validation tests
 
 ---
 
-## 📝 License
+## License
 
-MIT License. See LICENSE for details.
+MIT License. See [LICENSE](LICENSE).
 
 ---
 
