@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenCode Pet — Full Architecture</title>
+<style>
+  :root { --bg:#0b0d14; --panel:#11141f; --panel2:#161a28; --line:#2a3148; --txt:#e6e8f1; --muted:#7a83a3; --ok:#4ade80; --warn:#facc15; --bad:#f87171; --accent:#818cf8; --bloat:#6b7280; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--txt); font-family: ui-monospace, "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--panel); }
+  header h1 { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  .legend { display: inline-flex; gap: 10px; align-items: center; font-size: 11px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .stats { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .stats b { color: var(--txt); font-weight: 600; }
+  main { height: calc(100% - 44px); position: relative; }
+  #graph { width: 100%; height: 100%; cursor: grab; }
+  #graph:active { cursor: grabbing; }
+  .controls { position: absolute; top: 12px; left: 12px; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .controls input, .controls select { background: var(--panel2); border: 1px solid var(--line); color: var(--txt); padding: 5px 8px; border-radius: 6px; font-size: 11px; width: 220px; outline: none; }
+  .controls input:focus, .controls select:focus { border-color: var(--accent); }
+  .legend-panel { position: absolute; bottom: 12px; left: 12px; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 10px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .node { position: absolute; transform: translate(-50%, -50%); user-select: none; }
+  .node-inner { padding: 8px 10px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); min-width: 180px; max-width: 260px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .node-inner:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .node-inner.bloat { opacity: .7; border-style: dashed; }
+  .node-name { font-weight: 600; font-size: 12px; color: var(--txt); word-break: break-all; }
+  .node-meta { font-size: 10px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 9px; border: 1px solid var(--line); margin-left: 4px; vertical-align: middle; }
+  .badge.required { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  .badge.bloat { color: var(--bloat); border-color: color-mix(in srgb, var(--bloat) 40%, transparent); }
+  .badge.build { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+  .badge.test { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .badge.doc { color: #c084fc; border-color: color-mix(in srgb, #c084fc 40%, transparent); }
+  .badge.gen { color: #38bdf8; border-color: color-mix(in srgb, #38bdf8 40%, transparent); }
+  svg.edge-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .edge { fill: none; stroke-width: 1.5; transition: stroke .15s; }
+  .edge.animated { stroke-dasharray: 6 4; animation: dash 1s linear infinite; }
+  .edge-label { font-size: 9px; fill: var(--muted); font-family: inherit; }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+  .tooltip { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 11px; max-width: 260px; pointer-events: none; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.4); display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenCode Pet — Full Architecture</h1>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--ok)"></span>Required</span>
+    <span><span class="dot" style="background:var(--warn)"></span>Build</span>
+    <span><span class="dot" style="background:var(--accent)"></span>Test</span>
+    <span><span class="dot" style="background:#c084fc"></span>Doc</span>
+    <span><span class="dot" style="background:#38bdf8"></span>Gen</span>
+    <span><span class="dot" style="background:var(--bloat)"></span>Bloat</span>
+  </div>
+  <div class="stats">
+    <span>Files: <b id="countTotal">0</b></span>
+    <span style="margin-left:8px">Required: <b id="countReq">0</b></span>
+    <span style="margin-left:8px">Bloat: <b id="countBloat">0</b></span>
+  </div>
+</header>
+<main>
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search files..." />
+    <select id="filter">
+      <option value="all">All files</option>
+      <option value="required">Required</option>
+      <option value="build">Build artifacts</option>
+      <option value="test">Tests</option>
+      <option value="doc">Docs</option>
+      <option value="gen">Generators</option>
+      <option value="bloat">Bloat</option>
+    </select>
+    <label style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="showBloat" checked /> Show bloat
+    </label>
+  </div>
+  <div class="legend-panel">
+    <span><span class="dot" style="background:var(--ok)"></span>Required runtime</span>
+    <span><span class="dot" style="background:var(--warn)"></span>Build output</span>
+    <span><span class="dot" style="background:var(--accent)"></span>Test</span>
+    <span><span class="dot" style="background:#c084fc"></span>Doc</span>
+    <span><span class="dot" style="background:#38bdf8"></span>Generator</span>
+    <span><span class="dot" style="background:var(--bloat)"></span>Bloat/cache</span>
+  </div>
+  <div id="graph">
+    <svg class="edge-layer" id="edges"></svg>
+    <div id="nodes"></div>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+</main>
+<script>
+const COLORS = { required: "#4ade80", build: "#facc15", test: "#818cf8", doc: "#c084fc", gen: "#38bdf8", bloat: "#6b7280" };
+const nodes = [
+  { id: "runtime", x: 420, y: 0, label: "Runtime", meta: "Pet process + control process + OpenCode plugin", kind: "required", size: null },
+  { id: "main-py", x: 80, y: 110, label: "desktop/main.py", meta: "Pet engine: GDI layered window, physics, rendering, config watcher, wellbeing, focus ritual, bubble system", kind: "required", size: "112 KB" },
+  { id: "app-html", x: 420, y: 110, label: "desktop/app.html", meta: "Control window UI: pet picker, behavior settings, stats dashboard, focus pact card", kind: "required", size: "152 KB" },
+  { id: "control-html", x: 740, y: 110, label: "desktop/control.html", meta: "Alternative/legacy control window UI", kind: "build", size: "57 KB" },
+  { id: "ambient-css", x: 80, y: 260, label: "desktop/_ambient.css", meta: "Responsive breakpoints (1180/980/760/560px), dark theme, nav rail, focus card", kind: "required", size: "31 KB" },
+  { id: "focus-ritual-js", x: 320, y: 260, label: "desktop/_focus-ritual.js", meta: "Additive focus pact UI: phase bar, type-move break ritual, wilt detection", kind: "required", size: "6 KB" },  { id: "sprites", x: 580, y: 260, label: "desktop/sprites/*", meta: "Pixel-art sprite sheets: 6 pets x 9 states x 8 frames (192x208) + 15 evolution stage sheets", kind: "required", size: "~8 MB" },
+  { id: "pet-ico", x: 800, y: 260, label: "desktop/pet.ico", meta: "Application icon", kind: "required", size: "11 KB" },
+  { id: "requirements", x: 80, y: 400, label: "desktop/requirements.txt", meta: "Python dependencies: Pillow, pywebview, pystray, etc.", kind: "required", size: "0 KB" },
+  { id: "build-bat", x: 260, y: 400, label: "desktop/build.bat", meta: "PyInstaller build script for Windows EXE", kind: "build", size: "0.4 KB" },
+  { id: "openexe", x: 440, y: 400, label: "dist/OpenCodePet.exe", meta: "Built standalone EXE (48 MB) — regenerated on build", kind: "build", size: "48 MB" },
+  { id: "spec", x: 640, y: 400, label: "OpenCodePet.spec", meta: "PyInstaller spec — regenerated on build", kind: "build", size: "0.9 KB" },
+  { id: "build-dir", x: 800, y: 400, label: "build/", meta: "PyInstaller build cache (47 MB) — regenerated on build", kind: "bloat", size: "47 MB" },
+  { id: "readme", x: 80, y: 560, label: "README.md", meta: "Main documentation: features, install, usage, development, testing", kind: "doc", size: "6 KB" },
+  { id: "design", x: 240, y: 560, label: "DESIGN.md", meta: "Architecture decisions: GDI layered window, why not WebView2, config lock", kind: "doc", size: "3.8 KB" },
+  { id: "quickstart", x: 400, y: 560, label: "QUICK_START.md", meta: "Quick start guide", kind: "doc", size: "3.7 KB" },
+  { id: "branching", x: 560, y: 560, label: "BRANCHING_STRATEGY.md", meta: "Git branching docs", kind: "doc", size: "5.3 KB" },
+  { id: "emotion-bugs", x: 720, y: 560, label: "EMOTION_BUGS.md", meta: "Bug tracking for emotion/bubble system", kind: "doc", size: "13.8 KB" },
+  { id: "team-doc", x: 880, y: 560, label: "TEAM_COORDINATION.md", meta: "Team coordination notes", kind: "doc", size: "2.4 KB" },
+  { id: "sprite-gen", x: 80, y: 720, label: "_generate_evolution_sprites.py", meta: "Dev script: generates per-stage evolution sheets (tint, outline, bloom, particles)", kind: "gen", size: "8.6 KB" },
+  { id: "check-sprites", x: 280, y: 720, label: "check_sprites.py", meta: "Dev script: validates sprite sheet dimensions", kind: "gen", size: "3.9 KB" },
+  { id: "tests", x: 80, y: 880, label: "tests/", meta: "50+ Python tests + Node plugin tests + headless Chrome UI checks", kind: "test", size: "~100 KB" },
+  { id: "agent-mem", x: 280, y: 880, label: ".agent-memory/", meta: "Agent runtime memory — not part of shipped app", kind: "bloat", size: "1.1 KB" },
+  { id: "pytest-cache", x: 440, y: 880, label: ".pytest_cache/", meta: "Test cache — regenerated on every test run", kind: "bloat", size: "15 KB" },
+  { id: "package-lock", x: 600, y: 880, label: "package-lock.json", meta: "npm lockfile (50 KB) — useful for CI but not runtime", kind: "build", size: "50 KB" },
+  { id: "shots", x: 760, y: 880, label: "shots/", meta: "Screenshots for docs (720/980/dash/control)", kind: "doc", size: "858 KB" },
+  { id: "arch-map", x: 80, y: 1040, label: "ARCHITECTURE_MAP.html", meta: "This file — architecture visualization", kind: "doc", size: "13 KB" },
+];
+const edges = [
+  { source: "runtime", target: "main-py", label: "pet process", animated: true, color: "#4ade80" },
+  { source: "runtime", target: "app-html", label: "control process", animated: true, color: "#4ade80" },  { source: "main-py", target: "ambient-css", label: "loads", color: "#7a83a3" },
+  { source: "main-py", target: "focus-ritual-js", label: "loads", color: "#7a83a3" },
+  { source: "main-py", target: "sprites", label: "renders", color: "#7a83a3" },
+  { source: "main-py", target: "requirements", label: "depends on", color: "#7a83a3" },
+  { source: "app-html", target: "ambient-css", label: "loads", color: "#7a83a3" },
+  { source: "app-html", target: "focus-ritual-js", label: "loads", color: "#7a83a3" },
+  { source: "app-html", target: "sprites", label: "previews", color: "#7a83a3" },
+  { source: "app-html", target: "control-html", label: "alternative UI", color: "#7a83a3" },  { source: "main-py", target: "build-bat", label: "packaged by", color: "#6b7280" },
+  { source: "build-bat", target: "openexe", color: "#6b7280" },
+  { source: "build-bat", target: "spec", color: "#6b7280" },
+  { source: "build-bat", target: "build-dir", color: "#6b7280" },
+  { source: "runtime", target: "readme", color: "#c084fc" },
+  { source: "runtime", target: "design", color: "#c084fc" },
+  { source: "runtime", target: "quickstart", color: "#c084fc" },
+  { source: "runtime", target: "branching", color: "#c084fc" },
+  { source: "runtime", target: "tests", label: "validates", color: "#818cf8" },
+  { source: "runtime", target: "sprite-gen", color: "#38bdf8" },
+  { source: "runtime", target: "check-sprites", color: "#38bdf8" },
+  { source: "runtime", target: "agent-mem", color: "#6b7280", dash: true },
+  { source: "tests", target: "pytest-cache", color: "#6b7280", dash: true },
+  { source: "runtime", target: "package-lock", color: "#6b7280", dash: true },
+  { source: "runtime", target: "shots", color: "#6b7280", dash: true },
+  { source: "runtime", target: "arch-map", color: "#c084fc", dash: true },
+];
+const graph = document.getElementById("graph");
+const nodesEl = document.getElementById("nodes");
+const edgesEl = document.getElementById("edges");
+const tooltip = document.getElementById("tooltip");
+const searchInput = document.getElementById("search");
+const filterSelect = document.getElementById("filter");
+const showBloat = document.getElementById("showBloat");
+let scale = 1, tx = 0, ty = 0;
+let dragging = null, dragStart = null, panStart = null;
+function setTransform() {
+  nodesEl.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')';
+  edgesEl.setAttribute("transform", 'translate(' + tx + ', ' + ty + ') scale(' + scale + ')' );
+}
+function point(e) {
+  const r = graph.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: (clientX - r.left - tx) / scale, y: (clientY - r.top - ty) / scale };
+}
+graph.addEventListener("mousedown", (e) => {
+  if (e.target.closest(".node-inner")) return;
+  panStart = { x: e.clientX - tx, y: e.clientY - ty };
+  graph.style.cursor = "grabbing";
+  e.preventDefault();
+});
+window.addEventListener("mousemove", (e) => {
+  if (panStart) { tx = e.clientX - panStart.x; ty = e.clientY - panStart.y; setTransform(); return; }
+  if (dragging) { const p = point(e); dragging.x = p.x; dragging.y = p.y; renderNodes(); renderEdges(); }
+});
+window.addEventListener("mouseup", () => { panStart = null; dragging = null; graph.style.cursor = "grab"; });
+graph.addEventListener("wheel", (e) => {
+  const p = point(e);
+  const delta = -e.deltaY * 0.001;
+  const next = Math.max(0.2, Math.min(2, scale + delta));
+  tx = e.clientX - graph.getBoundingClientRect().left - p.x * next;
+  ty = e.clientY - graph.getBoundingClientRect().top - p.y * next;
+  scale = next;
+  setTransform();
+  e.preventDefault();
+}, { passive: false });
+function renderNodes() {
+  const q = searchInput.value.trim().toLowerCase();
+  const f = filterSelect.value;
+  const showB = showBloat.checked;
+  nodesEl.innerHTML = "";
+  let total = 0, req = 0, bloat = 0;
+  for (const n of nodes) {
+    if (f !== "all" && n.kind !== f) continue;
+    if (!showB && n.kind === "bloat") continue;
+    if (q && !n.label.toLowerCase().includes(q) && !n.meta.toLowerCase().includes(q)) continue;
+    total++; if (n.kind === "required") req++; if (n.kind === "bloat") bloat++;
+    const el = document.createElement("div");
+    el.className = "node";
+    el.style.left = n.x + "px";
+    el.style.top = n.y + "px";
+    const cls = n.kind === 'bloat' ? 'bloat' : 'required';
+    el.innerHTML = '<div class="node-inner ' + cls + '" data-id="' + n.id + '">' +
+      '<div class="node-name">' + n.label + '</div>' +
+      '<div class="node-meta">' + n.meta + '</div>' +
+      '<div style="margin-top:5px">' +
+        '<span class="badge ' + n.kind + '">' + n.kind.toUpperCase() + '</span>' +
+        (n.size ? '<span style="font-size:10px;color:var(--muted);margin-left:6px">' + n.size + '</span>' : '') +
+      '</div>' +
+    '</div>';
+    const inner = el.firstChild;
+    inner.addEventListener("mousedown", (e) => { e.stopPropagation(); dragging = n; });
+    inner.addEventListener("mouseenter", (e) => { tooltip.style.display = "block"; tooltip.innerHTML = '<b>' + n.label + '</b><br/><span style="color:var(--muted)">' + n.meta + '</span>'; });
+    inner.addEventListener("mousemove", (e) => { tooltip.style.left = (e.clientX + 12) + 'px'; tooltip.style.top = (e.clientY + 12) + 'px'; });
+    inner.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+    nodesEl.appendChild(el);
+  }
+  document.getElementById("countTotal").textContent = total;
+  document.getElementById("countReq").textContent = req;
+  document.getElementById("countBloat").textContent = bloat;
+}
+function renderEdges() {
+  const map = {};
+  for (const n of nodes) map[n.id] = n;
+  let html = "";
+  for (const e of edges) {
+    const s = map[e.source], t = map[e.target];
+    if (!s || !t) continue;
+    const x1 = s.x, y1 = s.y, x2 = t.x, y2 = t.y;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const cls = 'edge' + (e.animated ? ' animated' : '');
+    html += '<path class="' + cls + '" d="M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2 + '" stroke="' + e.color + '" marker-end="url(#arrow)" />';
+    if (e.label) html += '<text class="edge-label" x="' + mx + '" y="' + (my - 4) + '" text-anchor="middle">' + e.label + '</text>';
+  }
+  edgesEl.innerHTML = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7a83a3" /></marker></defs>' + html;
+}
+searchInput.addEventListener("input", () => { renderNodes(); renderEdges(); });
+filterSelect.addEventListener("change", () => { renderNodes(); renderEdges(); });
+showBloat.addEventListener("change", () => { renderNodes(); renderEdges(); });
+renderNodes();
+renderEdges();
+setTransform();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
