@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ['3.11', '3.12']
@@ -47,11 +49,27 @@ jobs:
           path: desktop/dist/OpenCodePet.exe
           retention-days: 90
 
-      - name: Upload release assets
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download executables
+        uses: actions/download-artifact@v4
         with:
-          files: desktop/dist/OpenCodePet.exe
+          path: dist
+          merge-multiple: true
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/OpenCodePet.exe
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -85,6 +103,6 @@ jobs:
             See [LICENSE](https://github.com/iAMv1/opencode-pet/blob/main/LICENSE) for details.
             
             ---
-            **Built with**: PyInstaller + Python ${{ matrix.python-version }}
+            **Built with**: PyInstaller + Python 3.11/3.12
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
