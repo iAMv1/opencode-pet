@@ -47,11 +47,28 @@ jobs:
           path: desktop/dist/OpenCodePet.exe
           retention-days: 90
 
-      - name: Create GitHub Release
+      - name: Create release package (ZIP)
+        run: |
+          cd desktop/dist
+          New-Item -ItemType Directory -Force release-package | Out-Null
+          Copy-Item OpenCodePet.exe release-package/
+          Copy-Item ${{ github.workspace }}/README.md release-package/README.txt
+          Copy-Item ${{ github.workspace }}/RELEASES.md release-package/RELEASES.txt 2>$null
+          Copy-Item ${{ github.workspace }}/LICENSE release-package/LICENSE.txt 2>$null
+          if (-not (Test-Path release-package/LICENSE.txt)) {
+            Set-Content release-package/LICENSE.txt "OpenCode Pet`nCopyright (c) 2024 iAMv1`n`nLicensed under MIT License.`nSee https://github.com/iAMv1/opencode-pet/blob/main/LICENSE for details."
+          }
+          Compress-Archive -Path release-package/* -DestinationPath OpenCodePet-v${{ github.ref_name }}-windows.zip -Force
+          Remove-Item release-package -Recurse -Force
+        shell: pwsh
+
+      - name: Upload release assets
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: desktop/dist/OpenCodePet.exe
+          files: |
+            desktop/dist/OpenCodePet.exe
+            desktop/dist/OpenCodePet-v${{ github.ref_name }}-windows.zip
           draft: false
           prerelease: false
           generate_release_notes: true
