@@ -3,6 +3,13 @@
 **Scope:** desktop/main.py -- state machine (_state(), _anim_id()), DEFAULT_MAP, PET_STATES, per-pet maps
 **Sprite validation:** check_sprites.py run output -- 0 errors, 1 warning (LPC cat row 3 unused)
 
+> **Status (2026-08-02):** BUG-1, BUG-2, BUG-3 and BUG-9 are FIXED in code and
+> locked in by `tests/test_state_machine.py`. BUG-6's duplicate `running`
+> state was removed (only `walking` remains, row 7). BUG-4's UI-side remap
+> is fixed in `desktop/app.html` (celebrating now renders as its own state).
+> BUG-5 is a deliberate design trade-off (the break nudge wave is transient).
+> BUG-7/BUG-8 (LPC cat visual variety) require new sprite art.
+
 ---
 
 ## 1. System Architecture Summary

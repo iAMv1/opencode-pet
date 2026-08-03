@@ -11,7 +11,7 @@ Native desktop pet for OpenCode. Pixel-art animated pets (petdex-style sprite sh
 - **Transparent Window** - No background. Just the pet, floating over your desktop.
 - **Frame Animation** - Canvas-rendered sprite sheets: idle, run L/R, wave, jump, fail, wait, run, review. States map to real agent activity (busy → running, thinking → review, error → failed, success → jump).
 - **Standalone Desktop App** - Single exe, zero setup. Reads `status-<sessionID>.json` via native bridge, 2s poll. No web server.
-- **Works With ANY App** - Not just opencode. OS-level activity layer: foreground-window detection + global input timer (Win32). Any terminal, editor, browser, or app drives the pet — typing → running, app switch → reacts, idle 30s+ → waiting. opencode events (tool names, exact states) enhance it when opencode is running.
+- **Works With ANY App** - Not just opencode. OS-level activity layer: foreground-window detection + global input timer (Win32). Any terminal, editor, browser, or app drives the pet — typing → running, app switch → reacts, screen idle 30s+ → the pet settles into a calm idle rest (no roaming while it waits). opencode events (tool names, exact states) enhance it when opencode is running.
 - **Tool Tracking** - Speech bubble shows tool label (opencode) or foreground app name (any app); typing indicator while working.
 - **Killswitch** - Drop `~/.opencode/pet/disabled` to disable the plugin.
 
@@ -52,6 +52,40 @@ python desktop/main.py
 # rebuild the exe:
 desktop\build.bat
 ```
+
+## Testing
+
+Continuous validation is one command (see `tests/README.md`):
+
+```bash
+python tests/run_all.py
+```
+
+- 187 Python tests: engine state machine, config/status/wellbeing (incl.
+  7-day focus history + day rollover + weekly insights + hour-of-day
+  buckets), ControlApi, HTML↔API contract, load/stress (300-file dirs,
+  corrupt configs, config churn), production hardening (Win32 64-bit
+  handle restypes, cross-process config write locking, sleep-gap
+  wellbeing clamp, bubble-text truncation perf), and the companion layer
+  (focus sessions grow/wilt/complete + XP, leveling curve, mood, streaks,
+  weekly-wrapped summary, per-app week breakdown, best-time-of-day peaks,
+  programmatic evolution stages, cross-midnight restart hour-bucket
+  preservation)
+- 21 Node tests: the plugin→status-file contract (states, celebration,
+  tool→busy flip, throttling, killswitch) against a throwaway HOME
+- 67 headless-Chrome UI checks against a mock bridge: Dashboard/Focus/
+  Wrapped/Companion page nav, session filters, expandable rows, keyboard
+  nav, wellbeing totals, 7-day focus chart + weekly comparison + insight
+  cards, live focus-session control (start/stop/min chips), weekly-wrapped
+  card + share, 30-day sparkline, per-app week bars, pet profile
+  (level/XP/mood/streak/stage), growth milestones, 90-day focus-calendar
+  heatmap, best-hours 24-bar chart, session search, sort,
+  state-distribution bar, zero console errors
+- 59 headless-Chrome checks against the REAL backend (`--web` mode): the
+  same UI driven through the real fetch bridge → real ControlApi → real
+  files, no mocks anywhere
+- `tests/check_frontend.py`: node --check on every inline script, HTML balance,
+  and the dist/ plugins (`server.js`, `tui.js`)
 
 ## Adding pets
 

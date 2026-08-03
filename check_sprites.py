@@ -20,7 +20,7 @@ PET_STATES_ROWS = [
     ('jumping',       4, 5),
     ('failed',        5, 8),
     ('waiting',       6, 6),
-    ('running',       7, 6),
+    ('walking',       7, 6),
     ('review',        8, 6),
 ]
 

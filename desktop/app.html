@@ -171,7 +171,395 @@
   .state-chip.thinking { color: #8ecbe2; border-color: rgba(93, 185, 216, 0.35); }
   .state-chip.error { color: var(--danger); border-color: rgba(241, 120, 127, 0.35); }
   .state-chip.success { color: var(--ok); border-color: rgba(93, 215, 155, 0.35); }
+  .state-chip.celebrating { color: #ffd27d; border-color: rgba(255, 210, 125, 0.4); }
+  .state-chip.retry { color: #8ecbe2; border-color: rgba(93, 185, 216, 0.35); }
   .state-chip.waiting { color: var(--text3); }
+
+  /* session filter chips */
+  .filters { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+  .fbtn {
+    padding: 4px 12px; border-radius: 999px; font-size: 11.5px; cursor: pointer;
+    background: var(--bg1); border: 1px solid var(--border); color: var(--text3);
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .fbtn:hover { color: var(--text); border-color: var(--border2); }
+  .fbtn:active { transform: scale(0.97); }
+  .fbtn[aria-pressed="true"] {
+    background: rgba(226, 162, 60, 0.1); border-color: rgba(226, 162, 60, 0.45); color: var(--text);
+  }
+  .fbtn .n {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px;
+    opacity: 0.7; margin-left: 5px; font-variant-numeric: tabular-nums;
+  }
+
+  /* session toolbar: search + sort */
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .searchbox {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    padding: 6px 11px; border-radius: 999px;
+    background: var(--bg1); border: 1px solid var(--border);
+    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .searchbox:focus-within { border-color: rgba(226, 162, 60, 0.5); box-shadow: 0 0 0 3px rgba(226, 162, 60, 0.12); }
+  .searchbox svg { width: 13px; height: 13px; color: var(--text3); flex-shrink: 0; }
+  .searchbox input {
+    flex: 1; min-width: 0; background: none; border: none; outline: none;
+    color: var(--text); font: inherit; font-size: 12px;
+  }
+  .searchbox input::placeholder { color: var(--text3); }
+  .searchbox input::-webkit-search-cancel-button { -webkit-appearance: none; }
+  .sortbtn {
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+    padding: 6px 12px; border-radius: 999px; font-size: 11.5px; cursor: pointer;
+    background: var(--bg1); border: 1px solid var(--border); color: var(--text3);
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .sortbtn:hover { color: var(--text); border-color: var(--border2); }
+  .sortbtn:active { transform: scale(0.97); }
+  .sortbtn svg { width: 12px; height: 12px; }
+
+  /* state distribution bar */
+  .dist { margin-bottom: 12px; }
+  .dist-bar {
+    display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+    background: var(--bg3);
+  }
+  .dist-bar i { display: block; height: 100%; transition: width 0.4s var(--ease); }
+  .dist-bar i.busy { background: var(--accent); }
+  .dist-bar i.thinking { background: var(--thinking); }
+  .dist-bar i.error { background: var(--danger); }
+  .dist-bar i.celebrating { background: var(--warn); }
+  .dist-bar i.other { background: var(--idle); }
+  .dist-legend {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 7px;
+    font-size: 10.5px; color: var(--text3);
+  }
+  .dist-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .dist-legend b { width: 7px; height: 7px; border-radius: 2px; }
+  .dist-legend b.busy { background: var(--accent); }
+  .dist-legend b.thinking { background: var(--thinking); }
+  .dist-legend b.error { background: var(--danger); }
+  .dist-legend b.celebrating { background: var(--warn); }
+  .dist-legend b.other { background: var(--idle); }
+  .dist-legend .n { font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  /* expandable session rows */
+  .ses { cursor: pointer; }
+  .ses:hover .ses-title { color: var(--accent); }
+  .ses .ses-detail {
+    display: none; margin-top: 8px; padding: 9px 12px; border-radius: var(--r-md);
+    background: var(--bg2); border: 1px solid var(--border);
+    font-size: 11.5px; color: var(--text2);
+    white-space: pre-wrap; word-break: break-word; max-height: 130px; overflow-y: auto;
+  }
+  .ses.expanded .ses-detail { display: block; animation: viewIn 0.18s var(--ease); }
+  .ses-meta.kv { display: block; margin-top: 3px; }
+  .ses-meta.kv .k { color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; }
+
+  .ses-dot[data-state="celebrating"] {
+    background: var(--warn);
+    box-shadow: 0 0 0 0 rgba(229, 181, 103, 0.45);
+    animation: halo2 1.6s ease-in-out infinite;
+  }
+  @keyframes halo2 {
+    0% { box-shadow: 0 0 0 0 rgba(229, 181, 103, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(229, 181, 103, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(229, 181, 103, 0); }
+  }
+  .ses-dot[data-state="retry"] { background: var(--thinking); }
+
+  /* wellbeing summary */
+  .wb-total {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 9px 4px 7px; font-size: 12px; color: var(--text3);
+    border-top: 1px solid var(--border); margin-top: 2px;
+  }
+  .wb-total b {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 14px;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+
+  /* 7-day focus history chart */
+  .sec-total {
+    margin-left: auto; font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 10.5px; color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .wk { display: flex; gap: 8px; align-items: flex-end; padding: 2px 2px 0; }
+  .wk-bar {
+    flex: 1; min-width: 0; height: 104px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    gap: 5px; position: relative;
+  }
+  .wk-bar i {
+    width: 58%; max-width: 30px; display: block; min-height: 3px;
+    background: linear-gradient(180deg, #f3c06a 0%, var(--accent) 60%, #b97e2a 100%);
+    border-radius: 4px 4px 0 0;
+    box-shadow: 0 0 12px -4px rgba(226, 162, 60, 0.55);
+    transition: transform 0.15s var(--ease);
+  }
+  .wk-bar:hover i { transform: scaleX(1.1); }
+  .wk-bar .wk-tip {
+    position: absolute; bottom: calc(100% - 12px); left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    font-size: 10px; color: var(--text); background: var(--bg2);
+    border: 1px solid var(--border2); border-radius: 6px;
+    padding: 2px 6px; white-space: nowrap; opacity: 0; pointer-events: none;
+    transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+  }
+  .wk-bar:hover .wk-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .wk-bar .wk-day { font-size: 10px; color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; }
+  .wk-bar .wk-day.today { color: var(--accent); font-weight: 700; }
+
+  /* focus insights */
+  .ins { display: flex; flex-direction: column; gap: 8px; }
+  .ins-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border-radius: var(--r-md);
+    background: var(--bg1); border: 1px solid var(--border);
+    animation: rowIn 0.25s var(--ease) both;
+  }
+  .ins-ic {
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    display: grid; place-items: center; color: var(--text3);
+    background: var(--bg2); border: 1px solid var(--border);
+  }
+  .ins-ic svg { width: 13px; height: 13px; }
+  .ins-ic.gold { color: var(--warn); background: rgba(229, 181, 103, 0.08); border-color: rgba(229, 181, 103, 0.25); }
+  .ins-ic.amber { color: var(--accent); background: rgba(226, 162, 60, 0.08); border-color: rgba(226, 162, 60, 0.25); }
+  .ins-body { min-width: 0; }
+  .ins-main { font-size: 12.5px; color: var(--text); font-weight: 550; }
+  .ins-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  /* week comparison */
+  .cmp { display: flex; flex-direction: column; gap: 10px; }
+  .cmp > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .cmp-k { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .cmp-v {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 17px; font-weight: 650;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .cmp-v.dim { color: var(--text2); }
+  .cmp-d { display: flex; align-items: center; gap: 8px; }
+  .cmp-badge {
+    padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+    font-family: "Cascadia Mono", Consolas, monospace;
+  }
+  .cmp-badge.up { color: var(--ok); background: rgba(93, 215, 155, 0.1); }
+  .cmp-badge.down { color: var(--danger); background: rgba(241, 120, 127, 0.1); }
+  .cmp-badge.flat { color: var(--text2); background: var(--bg2); }
+  .cmp-badge.first { color: var(--warn); background: rgba(229, 181, 103, 0.1); }
+  .cmp-d span { font-size: 11px; color: var(--text3); }
+
+  /* ============ live focus session ============ */
+  .fsess {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px; background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--r-lg); box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.6);
+  }
+  .ring-wrap { position: relative; width: 78px; height: 78px; flex-shrink: 0; }
+  .ring { width: 78px; height: 78px; transform: rotate(-90deg); }
+  .ring .ring-bg { fill: none; stroke: var(--bg3); stroke-width: 6.5; }
+  .ring .ring-fg {
+    fill: none; stroke: var(--accent); stroke-width: 6.5; stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s var(--ease), stroke 0.3s var(--ease);
+    filter: drop-shadow(0 0 5px rgba(226, 162, 60, 0.45));
+  }
+  .ring.wilted .ring-fg { stroke: var(--danger); filter: drop-shadow(0 0 5px rgba(241, 120, 127, 0.4)); }
+  .ring-em {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 30px; animation: breathe 2.4s ease-in-out infinite;
+  }
+  .fsess-info { flex: 1; min-width: 0; }
+  .fsess-title { font-size: 13.5px; font-weight: 600; }
+  .fsess-sub { font-size: 11.5px; color: var(--text3); margin-top: 2px; }
+  .fsess-sub b { color: var(--accent); font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .fsess-sub.warn { color: var(--danger); }
+  .mins {
+    display: flex; gap: 5px; margin-top: 9px; flex-wrap: wrap;
+  }
+  .min-chip {
+    padding: 3px 10px; border-radius: 999px; font-size: 11px; cursor: pointer;
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text3);
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .min-chip:hover { color: var(--text); border-color: var(--border2); }
+  .min-chip[aria-pressed="true"] {
+    background: rgba(226, 162, 60, 0.1); border-color: rgba(226, 162, 60, 0.45); color: var(--accent);
+  }
+  .fsess-btn { flex-shrink: 0; min-width: 108px; }
+  .fsess-btn.stop { color: var(--danger); border-color: rgba(241, 120, 127, 0.3); }
+  .fsess-btn.stop:hover { background: rgba(241, 120, 127, 0.07); }
+
+  /* ============ pet profile card ============ */
+  .prof { display: flex; flex-direction: column; gap: 12px; }
+  .prof-top { display: flex; align-items: center; gap: 14px; }
+  .prof-ava {
+    width: 62px; height: 62px; border-radius: 16px; overflow: hidden; flex-shrink: 0;
+    background: radial-gradient(130% 130% at 50% 38%, #211f19 0%, #131312 75%);
+    display: grid; place-items: center; font-size: 28px;
+  }
+  .prof-name { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mood-chip {
+    padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .mood-chip.happy { color: var(--ok); background: rgba(93, 215, 155, 0.12); }
+  .mood-chip.tired { color: var(--thinking); background: rgba(93, 185, 216, 0.12); }
+  .mood-chip.sad { color: var(--danger); background: rgba(241, 120, 127, 0.12); }
+  .mood-chip.neutral { color: var(--text2); background: var(--bg2); }
+  .prof-sub { font-size: 11.5px; color: var(--text3); }
+  .lvl {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px; color: var(--text3);
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 3px;
+  }
+  .lvl b { color: var(--accent); font-size: 12px; }
+  .xpbar { height: 7px; border-radius: 4px; background: var(--bg3); overflow: hidden; }
+  .xpbar span {
+    display: block; height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, rgba(226, 162, 60, 0.5), var(--accent));
+    transition: width 0.6s var(--ease);
+  }
+  .xplab {
+    display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 4px;
+    font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums;
+  }
+  .prof-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 2px; }
+
+  /* ============ weekly wrapped ============ */
+  .wrap {
+    position: relative; overflow: hidden;
+    background:
+      radial-gradient(130% 160% at 8% -20%, rgba(226, 162, 60, 0.16) 0%, transparent 55%),
+      radial-gradient(120% 150% at 100% 120%, rgba(93, 215, 155, 0.1) 0%, transparent 55%),
+      var(--bg1);
+    border: 1px solid var(--border); border-radius: var(--r-lg);
+    padding: 20px 20px 18px;
+  }
+  .wrap-eyebrow {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .wrap-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin-top: 4px; }
+  .wrap-sub { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .wrap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+  .wrap-cell {
+    padding: 11px 12px; border-radius: var(--r-md); background: var(--bg2);
+    border: 1px solid var(--border); animation: rowIn 0.3s var(--ease) both;
+  }
+  .wrap-cell .wv {
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 16px; font-weight: 700;
+    color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1.15;
+  }
+  .wrap-cell .wl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 3px; }
+  .wrap-cell.today .wv { color: var(--warn); }
+  .wrap-cell.dim .wv { color: var(--text2); }
+  .wrap-share {
+    margin-top: 14px; display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 14px; border-radius: 999px; font-size: 12px; cursor: pointer;
+    background: var(--accent); border: none; color: var(--accent-ink); font-weight: 650;
+    transition: transform 0.12s var(--ease), filter 0.15s var(--ease);
+  }
+  .wrap-share:hover { filter: brightness(1.1); }
+  .wrap-share:active { transform: scale(0.96); }
+  .wrap-share svg { width: 13px; height: 13px; }
+
+  /* 30-day sparkline */
+  .spark { display: flex; gap: 3px; align-items: flex-end; height: 66px; padding: 4px 2px 0; }
+  .spark i {
+    flex: 1; min-width: 0; display: block; border-radius: 3px 3px 0 0;
+    background: linear-gradient(180deg, rgba(226, 162, 60, 0.85), rgba(226, 162, 60, 0.25));
+    transition: filter 0.15s var(--ease), transform 0.15s var(--ease); position: relative;
+  }
+  .spark i:hover { filter: brightness(1.35); transform: scaleY(1.05); transform-origin: bottom; }
+  .spark i.today {
+    background: linear-gradient(180deg, #f3c06a, var(--accent));
+    box-shadow: 0 0 10px -2px rgba(226, 162, 60, 0.7);
+  }
+  .spark i .sp-tip {
+    position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%) translateY(2px);
+    font-size: 10px; color: var(--text); background: var(--bg2);
+    border: 1px solid var(--border2); border-radius: 6px; padding: 2px 6px;
+    white-space: nowrap; opacity: 0; pointer-events: none; z-index: 3;
+    transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+  }
+  .spark i:hover .sp-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .spark-legend { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 6px; }
+
+  /* ============ focus calendar heatmap ============ */
+  .hm-wrap { overflow-x: auto; padding-bottom: 4px; }
+  .hm {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 15px; gap: 4px;
+    width: max-content;
+  }
+  .hm-col { display: grid; grid-template-rows: repeat(7, 13px); gap: 4px; }
+  .hm-cell {
+    width: 13px; height: 13px; border-radius: 3px;
+    background: var(--bg3); border: 1px solid rgba(255, 255, 255, 0.03);
+    cursor: default; position: relative;
+    transition: transform 0.12s var(--ease), filter 0.12s var(--ease);
+  }
+  .hm-cell:hover { transform: scale(1.25); filter: brightness(1.3); z-index: 2; }
+  .hm-cell .hm-tip {
+    position: absolute; bottom: calc(100% + 5px); left: 50%; transform: translateX(-50%) translateY(2px);
+    font-size: 10px; color: var(--text); background: var(--bg2);
+    border: 1px solid var(--border2); border-radius: 6px; padding: 3px 7px;
+    white-space: nowrap; opacity: 0; pointer-events: none; z-index: 5;
+    transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+  }
+  .hm-cell:hover .hm-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .hm-cell.l1 { background: rgba(93, 185, 216, 0.28); }
+  .hm-cell.l2 { background: rgba(93, 215, 155, 0.35); }
+  .hm-cell.l3 { background: rgba(226, 162, 60, 0.55); }
+  .hm-cell.l4 { background: rgba(226, 162, 60, 0.85); }
+  .hm-cell.l5 { background: #f3c06a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+  .hm-legend { display: flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 10px; color: var(--text3); }
+  .hm-legend .hm-cell { width: 11px; height: 11px; border-radius: 3px; cursor: default; }
+  .hm-legend .hm-cell:hover { transform: none; filter: none; }
+  .hm-legend span { margin: 0 3px; }
+
+  /* ============ best focus hours (24-bar chart) ============ */
+  .pk { display: flex; align-items: flex-end; gap: 3px; height: 64px; padding: 4px 2px 0; }
+  .pk i {
+    flex: 1; min-width: 0; display: block; border-radius: 2px 2px 0 0;
+    background: rgba(93, 185, 216, 0.35); position: relative;
+    transition: filter 0.12s var(--ease), transform 0.12s var(--ease);
+  }
+  .pk i.best { background: linear-gradient(180deg, #f3c06a, var(--accent)); box-shadow: 0 0 8px -1px rgba(226, 162, 60, 0.6); }
+  .pk i.runner { background: rgba(93, 215, 155, 0.55); }
+  .pk i:hover { filter: brightness(1.3); transform: scaleY(1.06); transform-origin: bottom; }
+  .pk i .pk-tip {
+    position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%) translateY(2px);
+    font-size: 10px; color: var(--text); background: var(--bg2);
+    border: 1px solid var(--border2); border-radius: 6px; padding: 2px 6px;
+    white-space: nowrap; opacity: 0; pointer-events: none; z-index: 3;
+    transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+  }
+  .pk i:hover .pk-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .pk-axis { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text3); margin-top: 4px; }
+  .pk-line {
+    margin-top: 12px; padding: 9px 11px; border-radius: var(--r-md);
+    background: rgba(226, 162, 60, 0.07); border: 1px solid rgba(226, 162, 60, 0.25);
+    font-size: 12px; color: var(--text2); animation: rowIn 0.25s var(--ease) both;
+  }
+  .pk-line b { color: var(--accent); font-family: "Cascadia Mono", Consolas, monospace; }
+
+  /* evolution stage badge */
+  .stage-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--thinking); background: rgba(93, 185, 216, 0.1);
+    border: 1px solid rgba(93, 185, 216, 0.3);
+  }
+
+  /* per-app week bars */
+  .wa-row { display: flex; align-items: center; gap: 12px; padding: 7px 4px; border-top: 1px solid var(--border); }
+  .wa-row:last-child { border-bottom: 1px solid var(--border); }
+  .wa-app { width: 150px; font-size: 12.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wa-bar { flex: 1; height: 7px; border-radius: 4px; background: var(--bg3); overflow: hidden; }
+  .wa-bar span { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, rgba(93, 215, 155, 0.45), var(--ok)); transition: width 0.5s var(--ease); }
+  .wa-min { width: 56px; text-align: right; font-size: 11px; color: var(--text3); font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .wa-empty { padding: 22px 12px; color: var(--text3); font-size: 12px; text-align: center; }
 
   /* skeleton */
   .skel { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-top: 1px solid var(--border); }
@@ -350,6 +738,816 @@
     input[type="range"]::-webkit-slider-thumb { transition-duration: 0.01ms !important; }
   }
 </style>
+
+<style>
+/* --- Ambient Work Companion design layer (injected) --- */
+/* ============================================================
+   OpenCode Pet — "Ambient Work Companion" design layer
+   Injected after the base stylesheet in app.html / control.html.
+   Re-themes the ENTIRE surface to one premium token set without
+   touching any HTML/JS (the pywebview bridge contract is intact).
+   ============================================================ */
+
+:root {
+  --bg0: #0b0b0f;
+  --bg1: #16151c;
+  --bg2: #1e1d26;
+  --bg3: #292832;
+  --border: #25242e;
+  --border2: #35333f;
+  --text: #f4f3ee;
+  --text2: #b0aeb9;
+  --text3: #85838f;
+  --accent: #f6b35c;
+  --accent2: #ff7a6a;
+  --accent-ink: #221505;
+  --ok: #5fdd9d;
+  --warn: #e8b96b;
+  --danger: #ff7b84;
+  --thinking: #7fc8e8;
+  --idle: #8b8b98;
+  --r-lg: 16px;
+  --r-md: 11px;
+  --r-sm: 8px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --glow: 0 18px 50px -22px rgba(0, 0, 0, 0.8);
+  --accent-glow: 0 12px 32px -12px rgba(246, 179, 92, 0.55);
+}
+
+/* ---------- warm ambient canvas ---------- */
+html, body { background: transparent; }
+body {
+  background:
+    radial-gradient(120% 90% at 88% -12%, rgba(246, 145, 76, 0.16), transparent 55%),
+    radial-gradient(140% 120% at 8% 108%, rgba(246, 179, 92, 0.07), transparent 50%),
+    linear-gradient(180deg, #0e0d12 0%, var(--bg0) 46%);
+}
+
+.app { position: relative; }
+.app::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(60% 38% at 82% -6%, rgba(255, 140, 96, 0.10), transparent 60%);
+}
+.main, aside { position: relative; z-index: 1; }
+
+/* subtle film grain via layered dots (very low opacity) */
+@supports (background-image: radial-gradient(#000 0.5px, transparent 0.5px)) {
+  .app::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0.05;
+    background-image: radial-gradient(rgba(255,255,255,0.6) 0.5px, transparent 0.5px);
+    background-size: 4px 4px;
+    mix-blend-mode: soft-light;
+  }
+}
+
+/* ---------- sidebar / nav ---------- */
+.nav {
+  border-right: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.024), rgba(255,255,255,0.006) 60%),
+    rgba(8, 8, 11, 0.55);
+  backdrop-filter: blur(2px);
+  padding: 18px 12px 16px;
+}
+.brand { padding: 2px 8px 18px; }
+.brand h1 { font-size: 14px; font-weight: 640; letter-spacing: 0.005em; }
+.brand .sub { font-size: 11px; letter-spacing: 0.02em; }
+
+.dot {
+  width: 26px; height: 26px; border-radius: 9px;
+  background: linear-gradient(135deg, #ffd089 0%, var(--accent) 48%, var(--accent2) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 4px 14px -4px rgba(246, 179, 92, 0.7);
+}
+.dot::after { left: 6px; top: 6px; width: 5px; height: 5px; }
+
+.nav-item {
+  border-radius: 10px;
+  margin-bottom: 3px;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease), transform 0.12s var(--ease);
+}
+.nav-item:hover { background: rgba(255, 255, 255, 0.05); }
+.nav-item:active { transform: scale(0.98); }
+.nav-item[aria-current="page"] {
+  background: linear-gradient(90deg, rgba(246, 179, 92, 0.16), rgba(255, 122, 106, 0.07));
+  box-shadow: inset 0 0 0 1px rgba(246, 179, 92, 0.22);
+  color: var(--text);
+}
+.nav-item[aria-current="page"]::before {
+  left: -12px; top: 7px; bottom: 7px; width: 3px;
+  background: linear-gradient(180deg, #ffd089, var(--accent2));
+  box-shadow: 0 0 10px rgba(246, 179, 92, 0.6);
+}
+.nav-item svg { width: 17px; height: 17px; }
+
+
+/* ---------- view headers ---------- */
+.view-head { padding-bottom: 18px; margin-bottom: 20px; }
+.view-head h2 {
+  font-size: 26px; font-weight: 640; letter-spacing: -0.02em; line-height: 1.05;
+  background: linear-gradient(180deg, #fff 30%, #cfc9c0 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.view-head .desc { font-size: 13px; color: var(--text2); margin-top: 6px; letter-spacing: 0.005em; }
+
+.live {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 9px; border-radius: 999px;
+  background: rgba(246, 179, 92, 0.08);
+  border: 1px solid rgba(246, 179, 92, 0.28);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; color: var(--accent); font-variant-numeric: tabular-nums;
+  box-shadow: var(--accent-glow);
+}
+.live .pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: linear-gradient(135deg, #ffd089, var(--accent2));
+  box-shadow: 0 0 0 0 rgba(246, 179, 92, 0.55);
+  animation: livePulse 2.2s var(--ease) infinite;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(246, 179, 92, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(246, 179, 92, 0); }
+  100% { box-shadow: 0 0 0 rgba(246, 179, 92, 0); }
+}
+
+.sec-label {
+  font-size: 11px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text2); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.sec-label::before {
+  content: ""; width: 4px; height: 12px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 8px rgba(246, 179, 92, 0.45);
+}
+.sec-total { color: var(--accent); font-weight: 640; }
+
+/* ---------- workbench grid + cards ---------- */
+.dash-grid { gap: 22px; }
+.feed .sec-label { margin-bottom: 12px; }
+
+.rail { gap: 16px; }
+.rail-card {
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008) 58%),
+    var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 17px 16px;
+}
+
+/* rail pet — the hero shelf */
+.rail-pet { gap: 12px; padding-top: 20px; }
+.rail-pet .pv {
+  width: 128px; height: 128px; border-radius: 20px;
+  background:
+    radial-gradient(70% 55% at 50% 40%, rgba(255, 209, 137, 0.20), transparent 70%),
+    radial-gradient(130% 130% at 50% 42%, #2a2418 0%, #121110 78%);
+  border: 1px solid rgba(246, 179, 92, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 14px 34px -16px rgba(0,0,0,0.7);
+}
+.rail-pet .pet-name { font-size: 15px; font-weight: 640; letter-spacing: 0.005em; }
+.rail-pet .pet-state { font-size: 11.5px; color: var(--text2); }
+
+.rail-stats { gap: 8px; }
+.stat {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+
+/* ---------- session filters, search, toolbar ---------- */
+.filters { margin-bottom: 14px; gap: 7px; }
+.fbtn {
+  padding: 5px 13px; border-radius: 999px; font-size: 11.5px; font-weight: 560;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.fbtn:hover { color: var(--text); border-color: var(--border2); }
+.fbtn[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, #ffd089, var(--accent) 55%, var(--accent2));
+  border-color: transparent;
+  font-weight: 640;
+  box-shadow: var(--accent-glow);
+}
+.fbtn .n {
+  background: rgba(0, 0, 0, 0.18); color: inherit;
+  padding: 0 5px; border-radius: 999px; margin-left: 6px;
+}
+.fbtn[aria-pressed="true"] .n { background: rgba(255, 255, 255, 0.22); color: var(--accent-ink); }
+
+.toolbar { margin-bottom: 14px; gap: 8px; }
+.searchbox {
+  padding: 7px 12px; border-radius: 999px;
+  background: var(--bg1); border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.searchbox:focus-within {
+  border-color: rgba(246, 179, 92, 0.55);
+  box-shadow: 0 0 0 3px rgba(246, 179, 92, 0.14);
+}
+.sortbtn {
+  border-radius: 999px; background: var(--bg1); border: 1px solid var(--border);
+  color: var(--text2);
+}
+.sortbtn:hover { color: var(--text); border-color: var(--border2); }
+
+/* state distribution bar */
+.dist-bar {
+  height: 7px; border-radius: 4px; background: var(--bg3);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.dist-bar i.busy { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.dist-bar i.thinking { background: var(--thinking); }
+.dist-bar i.error { background: var(--danger); }
+.dist-bar i.celebrating { background: var(--warn); }
+.dist-bar i.other { background: var(--idle); }
+
+/* state chips */
+.state-chip {
+  border-radius: 999px; padding: 2px 9px; font-size: 10.5px; font-weight: 640;
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.state-chip.busy { color: #ffd089; border-color: rgba(246, 179, 92, 0.4); background: rgba(246, 179, 92, 0.08); }
+.state-chip.thinking { color: var(--thinking); border-color: rgba(127, 200, 232, 0.35); }
+.state-chip.error { color: var(--danger); border-color: rgba(255, 123, 132, 0.38); }
+.state-chip.success { color: var(--ok); border-color: rgba(95, 221, 157, 0.35); }
+.state-chip.celebrating {
+  color: #ffd27d; border-color: rgba(255, 210, 125, 0.45);
+  background: rgba(255, 210, 125, 0.08);
+}
+.state-chip.retry { color: var(--thinking); }
+.state-chip.waiting { color: var(--text2); }
+
+/* session dots */
+.ses-dot { box-shadow: 0 0 0 2px var(--bg0); }
+.ses-dot[data-state="celebrating"] {
+  background: var(--warn);
+  box-shadow: 0 0 0 0 rgba(246, 179, 92, 0.5), 0 0 0 2px var(--bg0);
+  animation: halo2 1.6s ease-in-out infinite;
+}
+.ses-dot[data-state="busy"] { background: var(--accent); }
+.ses-dot[data-state="thinking"] { background: var(--thinking); }
+.ses-dot[data-state="error"] { background: var(--danger); }
+
+/* ---------- 7-day focus bars ---------- */
+.wk-bar i {
+  background: linear-gradient(180deg, #ffd089 0%, var(--accent) 60%, #e07f3a 100%);
+  box-shadow: 0 0 14px -4px rgba(246, 179, 92, 0.6);
+}
+.wk-bar .wk-day { color: var(--text3); }
+.wk-bar .wk-day.today { color: var(--accent); }
+.wk-tip, .hm-tip, .pk-tip, .sp-tip {
+  background: var(--bg2); border: 1px solid var(--border2);
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,0.6);
+}
+
+/* ---------- focus insights ---------- */
+.ins-row {
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.006)), var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.ins-ic { border-radius: 9px; }
+.ins-ic.gold { color: var(--warn); background: rgba(232, 185, 107, 0.09); border-color: rgba(232, 185, 107, 0.28); }
+.ins-ic.amber { color: var(--accent); background: rgba(246, 179, 92, 0.1); border-color: rgba(246, 179, 92, 0.3); }
+.ins-main { font-weight: 580; color: var(--text); }
+
+/* ---------- week comparison ---------- */
+.cmp-k { letter-spacing: 0.08em; }
+.cmp-v {
+  color: var(--accent);
+  background: linear-gradient(180deg, #ffd089, var(--accent2));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.cmp-v.dim { color: var(--text2); -webkit-text-fill-color: var(--text2); }
+.cmp-badge.up { color: var(--ok); background: rgba(95, 221, 157, 0.12); }
+.cmp-badge.down { color: var(--danger); background: rgba(255, 123, 132, 0.12); }
+.cmp-badge.flat { color: var(--text2); background: var(--bg2); }
+.cmp-badge.first { color: var(--warn); background: rgba(232, 185, 107, 0.12); }
+
+/* ---------- live focus session ---------- */
+.fsess {
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008) 55%),
+    var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.ring .ring-bg { stroke: var(--bg3); }
+.ring .ring-fg {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 5px rgba(246, 179, 92, 0.5));
+}
+.ring.wilted .ring-fg { stroke: var(--danger); filter: drop-shadow(0 0 5px rgba(255,123,132,0.5)); }
+.ring-em {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 26px; pointer-events: none;
+}
+.fsess-title { font-size: 14px; font-weight: 640; letter-spacing: 0.003em; }
+.fsess-sub { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+.fsess-sub.active { color: var(--accent); }
+.fsess-sub.wilted { color: var(--danger); }
+
+.mins { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.min-chip {
+  padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.min-chip:hover { color: var(--text); border-color: var(--border2); }
+.min-chip[aria-pressed="true"] {
+
+/* ---------- heatmap ---------- */
+.hm-cell { border-radius: 4px; }
+.hm-cell.l1 { background: rgba(127, 200, 232, 0.30); }
+.hm-cell.l2 { background: rgba(95, 221, 157, 0.38); }
+.hm-cell.l3 { background: rgba(246, 179, 92, 0.55); }
+.hm-cell.l4 { background: rgba(246, 179, 92, 0.82); }
+.hm-cell.l5 {
+  background: linear-gradient(135deg, #ffd089, var(--accent2));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 8px -2px rgba(255, 122, 106, 0.5);
+}
+.hm-legend .hm-cell { border-radius: 3px; }
+
+/* ---------- best focus hours (24-bar) ---------- */
+.pk i.best { background: linear-gradient(180deg, #ffd089, var(--accent2)); box-shadow: 0 0 10px -2px rgba(246, 179, 92, 0.7); }
+.pk i.runner { background: rgba(95, 221, 157, 0.6); }
+.pk-line {
+  color: var(--text2);
+  background: linear-gradient(90deg, rgba(246, 179, 92, 0.10), rgba(255, 122, 106, 0.05));
+  border: 1px solid rgba(246, 179, 92, 0.28);
+}
+.pk-line b {
+  color: var(--accent);
+  background: linear-gradient(180deg, #ffd089, var(--accent2));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+/* ---------- per-app week bars ---------- */
+.wa-bar { background: var(--bg3); }
+.wa-bar span { background: linear-gradient(90deg, rgba(95, 221, 157, 0.4), var(--ok)); }
+.wa-app { color: var(--text2); }
+
+/* ---------- wellbeing app rows ---------- */
+.wb-bar { background: var(--bg3); }
+.wb-bar span { background: linear-gradient(90deg, rgba(246, 179, 92, 0.4), var(--accent)); }
+.wb-app { color: var(--text2); }
+.wb-total b { color: var(--accent); }
+
+/* ---------- 30-day sparkline ---------- */
+.spark {
+  display: flex; align-items: flex-end; gap: 2px; height: 56px; padding: 4px 2px 0;
+}
+.spark i {
+  flex: 1; min-width: 0; display: block; border-radius: 2px 2px 0 0;
+  background: rgba(246, 179, 92, 0.45); position: relative;
+  transition: filter 0.12s var(--ease);
+}
+.spark i:hover { filter: brightness(1.35); }
+.spark i.today { background: var(--accent); box-shadow: 0 0 8px -1px rgba(246,179,92,0.6); }
+.spark-legend { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-top: 5px; }
+
+/* ---------- evolution stage + pet profile ---------- */
+.stage-chip {
+  color: var(--thinking); background: rgba(127, 200, 232, 0.1); border-color: rgba(127, 200, 232, 0.3);
+}
+.prof { border-radius: var(--r-lg); }
+.prof-ava {
+  width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font-size: 30px;
+  background: radial-gradient(70% 60% at 50% 40%, rgba(255, 209, 137, 0.22), transparent 70%),
+    radial-gradient(130% 130% at 50% 42%, #2a2418 0%, #121110 78%);
+  border: 1px solid rgba(246, 179, 92, 0.18);
+}
+.prof-name { font-size: 14px; font-weight: 640; }
+.mood-chip {
+  display: inline-flex; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 640;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-left: 6px; vertical-align: middle;
+}
+.mood-chip.happy { color: var(--ok); background: rgba(95, 221, 157, 0.12); }
+.mood-chip.tired { color: var(--thinking); background: rgba(127, 200, 232, 0.12); }
+.mood-chip.sad { color: var(--danger); background: rgba(255, 123, 132, 0.12); }
+.mood-chip.neutral { color: var(--text2); background: rgba(255, 255, 255, 0.06); }
+.lvl b { color: var(--accent); }
+.xpbar {
+  height: 9px; border-radius: 6px; background: var(--bg3);
+  overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+}
+.xpbar span {
+  display: block; height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 10px -2px rgba(246, 179, 92, 0.6);
+}
+.xplab { color: var(--text3); font-size: 11px; } 
+
+/* ---------- weekly wrapped ---------- */
+.wrap { border-radius: var(--r-lg); }
+.wrap-eyebrow {
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase;
+
+/* ---------- pets & behavior ---------- */
+#pets { gap: 10px; }
+.pet-card {
+  border-radius: var(--r-md);
+  transition: border-color 0.18s var(--ease), background 0.18s var(--ease),
+    transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.pet-card:hover { background: var(--bg2); }
+.pet-card:active { transform: scale(0.97); }
+.pet-card[aria-checked="true"] {
+  background: linear-gradient(180deg, rgba(246, 179, 92, 0.10), rgba(255, 122, 106, 0.04)), #17151b;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(246, 179, 92, 0.28), var(--accent-glow);
+}
+.small-pv {
+  border-radius: 10px;
+  background: radial-gradient(75% 60% at 50% 40%, rgba(255, 209, 137, 0.18), transparent 70%),
+    radial-gradient(130% 130% at 50% 44%, #2a2418 0%, #121110 78%);
+  border: 1px solid rgba(246, 179, 92, 0.14);
+}
+
+/* sliders */
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px; border-radius: 3px;
+  background: linear-gradient(to right,
+    var(--accent) var(--fill, 50%),
+    var(--bg3) var(--fill, 50%));
+}
+input[type="range"]::-webkit-slider-thumb {
+  width: 17px; height: 17px; margin-top: -6px; border-radius: 50%;
+  background: linear-gradient(135deg, #fff, #f0e6d8);
+  border: 2px solid var(--accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(246, 179, 92, 0.25);
+}
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
+
+/* toggles */
+.switch {
+  width: 44px; height: 26px; border-radius: 15px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.switch::after {
+  top: 3px; left: 3px; width: 18px; height: 18px;
+  background: linear-gradient(135deg, #e8e8ec, #b8b8c2);
+}
+.switch[aria-checked="true"] {
+  background: linear-gradient(135deg, #ffd089, var(--accent2));
+  border-color: transparent;
+  box-shadow: var(--accent-glow);
+}
+.switch[aria-checked="true"]::after {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.val { color: var(--accent); }
+
+/* ---------- loading / empty / error states ---------- */
+.skel { border-top: 1px solid var(--border); }
+.skel .sk-line { background: linear-gradient(90deg, var(--bg2), var(--bg3), var(--bg2)); background-size: 200% 100%; }
+
+.empty .art {
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)), var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.empty h3 { color: var(--text2); }
+.empty .hint { color: var(--accent); }
+
+.errbanner {
+  background: rgba(255, 123, 132, 0.07); border: 1px solid rgba(255, 123, 132, 0.3);
+  color: var(--danger); border-radius: var(--r-md);
+}
+
+/* ---------- status toast ---------- */
+#status {
+  bottom: 18px; background: var(--bg1);
+  border: 1px solid var(--border2);
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--text); padding: 8px 18px;
+}
+#status[data-kind="ok"] { color: var(--ok); }
+
+/* ============================================================
+   Control window (control.html) specifics
+   ============================================================ */
+.content { padding: 4px 18px 12px; }
+.sec { color: var(--text2); }
+.sec::after { background: linear-gradient(to right, var(--border), transparent); }
+
+/* pet picker grid (control window only — .content is control.html's wrapper) */
+.content #pets { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pet-card {
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.006)), var(--bg1);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 11px 7px 12px;
+}
+.pet-card:hover { background: var(--bg2); border-color: var(--border2); }
+.pet-card[aria-checked="true"] {
+  background: linear-gradient(180deg, rgba(246,179,92,0.10), rgba(255,122,106,0.04)), #17151b;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(246,179,92,0.28), var(--accent-glow);
+}
+.pv { border-radius: 11px; border: 1px solid rgba(246, 179, 92, 0.14); }
+.name { font-size: 12px; font-weight: 560; color: var(--text2); }
+.pet-card[aria-checked="true"] .name { color: var(--text); }
+
+/* behavior rows */
+.behavior { gap: 18px; }
+.lab { font-weight: 560; }
+.slider-wrap { margin-top: 9px; }
+.row { gap: 12px; }
+.rc-footer, .footer {
+  border-top: 1px solid var(--border2);
+  padding: 12px 2px 2px;
+}
+.footer { gap: 8px; }
+
+/* close button */
+#close { border-radius: 9px; color: var(--text3); }
+#close:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+
+
+/* ============================================================
+   FOCUS EXPERIENCE — ritual, sprout maturity, cross-app chip
+   (accepted via ideation + critique consensus)
+   ============================================================ */
+.focus-ritual { margin-top: 14px; }
+.fr-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.fr-appchip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px; border-radius: 999px; font-size: 11.5px;
+  color: var(--text2);
+  background: linear-gradient(90deg, rgba(246, 179, 92, 0.10), rgba(255, 122, 106, 0.06));
+  border: 1px solid rgba(246, 179, 92, 0.28);
+}
+.fr-appchip b { color: var(--text); font-weight: 620; }
+.fr-appdot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: linear-gradient(135deg, #ffd089, var(--accent2));
+  box-shadow: 0 0 8px rgba(246, 179, 92, 0.6);
+}
+.fr-phase {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text2);
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+.fr-phase.seed { color: var(--text2); }
+.fr-phase.sprout { color: var(--ok); border-color: rgba(95, 221, 157, 0.3); background: rgba(95, 221, 157, 0.07); }
+.fr-phase.leaf { color: var(--thinking); border-color: rgba(127, 200, 232, 0.3); background: rgba(127, 200, 232, 0.07); }
+.fr-phase.bloom { color: var(--accent); border-color: rgba(246, 179, 92, 0.4); background: rgba(246, 179, 92, 0.08); }
+.fr-phase.wilt { color: var(--danger); border-color: rgba(255, 123, 132, 0.35); background: rgba(255, 123, 132, 0.07); }
+
+.fr-phasebar {
+  height: 7px; border-radius: 4px; margin-top: 10px;
+  background: var(--bg3); overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.fr-phasebar span {
+  display: block; height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, #6bd2a0 0%, var(--ok) 45%, var(--accent) 80%, var(--accent2) 100%);
+  transition: width 0.6s var(--ease);
+}
+.focus-ritual.wilt .fr-phasebar span { background: linear-gradient(90deg, var(--danger), var(--warn)); }
+
+/* completion ritual */
+.fr-ritual {
+  position: relative; height: 74px; margin-top: 12px; overflow: visible;
+  border-radius: var(--r-md);
+  background: radial-gradient(90% 120% at 18% 90%, rgba(255, 209, 137, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008)), var(--bg1);
+  border: 1px solid rgba(246, 179, 92, 0.28);
+}
+.fr-bolt {
+  position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 26px; line-height: 1; color: #ffd089;
+  filter: drop-shadow(0 0 8px rgba(255, 200, 110, 0.8));
+  animation: frCharge 0.5s var(--ease);
+}
+.fr-arc {
+  position: absolute; left: 40px; top: 12px; width: 64px; height: 34px;
+  overflow: visible;
+}
+.fr-arc path { fill: none; stroke: #ffcf8a; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 160; stroke-dashoffset: 160; animation: frArc 0.6s var(--ease) 0.3s forwards; }
+.fr-cursor {
+  position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  font-size: 24px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+  animation: frCursor 0.28s var(--ease);
+}
+.fr-ash { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; gap: 6px; font-size: 13px; color: #d8a04a; }
+.fr-ash span { opacity: 0; animation: frEmber 0.9s var(--ease) 0.35s forwards; }
+.fr-ash span:nth-child(2) { animation-delay: 0.52s; }
+.fr-ash span:nth-child(3) { animation-delay: 0.66s; }
+
+@keyframes frCharge { 0% { transform: translateY(-50%) scale(0.2); opacity: 0; } 60% { transform: translateY(-50%) scale(1.3); opacity: 1; } 100% { transform: translateY(-50%) scale(1); } }
+@keyframes frArc { to { stroke-dashoffset: 0; } }
+@keyframes frCursor { 0% { transform: translateY(-50%) scale(1); } 45% { transform: translateY(-50%) scale(0.94) rotate(2deg); } 100% { transform: translateY(-50%) scale(0.98); } }
+@keyframes frEmber { 0% { opacity: 0; transform: translateY(4px); } 35% { opacity: 0.9; } 100% { opacity: 0.15; transform: translateY(-7px); } }
+
+.fr-break {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 8px;
+  text-align: center; font-size: 13px; font-weight: 560; color: var(--text);
+  animation: frBreak 0.5s var(--ease) 0.7s backwards;
+}
+.fr-break b {
+  color: var(--accent);
+  background: linear-gradient(180deg, #ffd089, var(--accent2));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.fr-break span { color: var(--text3); font-weight: 450; }
+@keyframes frBreak { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: none; } }
+
+.fr-move { margin-top: 11px; font-size: 12px; color: var(--text2); }
+.fr-move b { color: var(--accent); }
+
+/* ============================================================
+   FOCUS CARD — "the pact" hierarchy (pet-led, not a timer)
+   ============================================================ */
+#focusSession .fsess { align-items: center; }
+.fsess {
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+/* soft ambient rim that makes the card feel alive, not like a timer */
+.fsess::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 0% 100%, rgba(246, 179, 92, 0.10), transparent 55%),
+    radial-gradient(90% 70% at 100% 0%, rgba(255, 122, 106, 0.06), transparent 55%);
+  opacity: 0.9;
+}
+.fsess > * { position: relative; }
+
+.fsess-eyebrow {
+  font-size: 10px; font-weight: 680; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 4px;
+}
+.fsess-title { font-size: 15px; font-weight: 660; line-height: 1.2; }
+.fs-move {
+  color: var(--accent);
+  background: linear-gradient(180deg, #ffd089, var(--accent2));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.fs-remain { color: var(--text2); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   RESPONSIVE — desktop app when NOT fullscreen (control window,
+   narrow dashboards). Collapses the rail, shrinks the nav, reflows
+   the pet grid, and tightens padding so nothing overflows.
+   ============================================================ */
+@media (max-width: 1180px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .rail {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .rail > .rail-card { flex: 1 1 260px; min-width: 0; }
+  .rail-pet { flex: 0 1 220px; }
+}
+@media (max-width: 980px) {
+  :root { --nav: 176px; }
+  .main { padding: 18px 18px 14px; }
+  .view-head { flex-wrap: wrap; gap: 8px; }
+  .view-head h2 { font-size: 22px; }
+  #pets { grid-template-columns: repeat(4, 1fr) !important; }
+  .wrap-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .prof-stats { grid-template-columns: repeat(3, 1fr) !important; }
+  .dash-grid { gap: 16px; }
+  .feed .sec-label { margin-bottom: 10px; }
+}
+@media (max-width: 760px) {
+  :root { --nav: 132px; }
+  .nav { padding: 14px 8px 12px; }
+  .nav-item { font-size: 12px; padding: 7px 8px; gap: 8px; }
+  .nav-item svg { width: 15px; height: 15px; }
+  .brand { padding: 2px 4px 12px; }
+  .brand h1 { font-size: 12px; }
+  .brand .sub { font-size: 10px; }
+  .main { padding: 14px 14px 12px; }
+  .view-head h2 { font-size: 19px; }
+  .view-head .desc { font-size: 11.5px; }
+  #pets { grid-template-columns: repeat(3, 1fr) !important; }
+  .live { font-size: 10.5px; padding: 5px 10px 5px 8px; }
+  .filters { gap: 6px; }
+  .fbtn { padding: 4px 10px; font-size: 11px; }
+  .toolbar { flex-wrap: wrap; }
+  .fsess { flex-wrap: wrap; }
+  .fsess-actions { margin-left: 0; width: 100%; }
+  .fsess-btn { width: 100%; }
+}
+@media (max-width: 560px) {
+  :root { --nav: 108px; }
+  .nav-item { font-size: 11px; }
+  .rail > .rail-card { flex: 1 1 100%; }
+}
+
+/* ============================================================
+   FOCUS PAGE — make the "pact" lead, demote the timer chrome.
+   Tighter, more intentional hierarchy; the ring is a presence,
+   not a clock face.
+   ============================================================ */
+#view-focus .view-head .desc { max-width: 52ch; }
+.fsess {
+  padding: 18px 18px 16px;
+  gap: 18px;
+}
+.fsess-info { min-width: 0; flex: 1; }
+.mins { margin-top: 12px; }
+.mins .min-chip { padding: 5px 11px; }
+/* the commitment CTA reads as a pact, not a generic "start" */
+.fsess-btn {
+  font-weight: 620; letter-spacing: 0.01em;
+  padding: 9px 16px;
+}
+.fsess-btn.stop {
+  background: linear-gradient(180deg, rgba(255,123,132,0.14), rgba(255,123,132,0.04)), var(--bg2);
+  border-color: rgba(255,123,132,0.35); color: var(--danger);
+}
+
+.fsess-sub.wilted { color: var(--danger); font-weight: 540; }
+.fsess-actions { margin-left: auto; align-self: center; flex-shrink: 0; }
+
+.fr-wilt { margin-top: 11px; font-size: 12px; color: var(--danger); font-weight: 560; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fr-bolt, .fr-arc path, .fr-cursor, .fr-ash span, .fr-break { animation: none !important; }
+  .fr-arc path { stroke-dashoffset: 0; }
+  .fr-ash span { opacity: 0.5; }
+}
+
+/* header brand in small window */
+.brand { padding: 2px 4px 14px; }
+#sub { max-width: 100%; }
+
+/* drag region stays transparent/neutral */
+.pywebview-drag-region { -webkit-app-region: drag; }
+
+#status[data-kind="error"] { color: var(--danger); }
+#status[data-kind="warn"] { color: var(--warn); }
+
+/* ---------- a11y + motion ---------- */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+  color: var(--accent);
+}
+.wrap-title {
+  font-size: 34px; font-weight: 680; letter-spacing: -0.02em; line-height: 1.05;
+  background: linear-gradient(180deg, #ffd089 10%, var(--accent2) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, #ffd089, var(--accent) 60%, var(--accent2));
+  border-color: transparent; box-shadow: var(--accent-glow);
+}
+.fsess-btn { font-weight: 600; }
+
+.ses-dot[data-state="success"] { background: var(--ok); }
+
+.ses-detail {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+}
+
+}
+.stat b { font-size: 18px; font-weight: 660; }
+
+/* buttons */
+.btn {
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)), var(--bg2);
+  border: 1px solid var(--border2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: transform 0.12s var(--ease), background 0.15s var(--ease),
+    border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.btn:hover { background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03)), var(--bg3); }
+.btn.warn { color: var(--danger); }
+
+/* session feed card rows share the glass language */
+.ses { border-radius: var(--r-md); }
+.ses:hover .ses-title { color: var(--accent); }
+
+</style>
 </head>
 <body>
   <div class="app" role="dialog" aria-modal="false" aria-label="OpenCode Pet">
@@ -366,6 +1564,18 @@
         <button class="nav-item" data-view="dash" aria-current="page">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1"/><rect x="9.5" y="1.5" width="5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>
           Dashboard
+        </button>
+        <button class="nav-item" data-view="focus">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2.4M8 11.8v2.4M1.8 8h2.4M11.8 8h2.4"/></svg>
+          Focus
+        </button>
+        <button class="nav-item" data-view="wrapped">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5c-1.7 0-3 1.2-3 2.7 0 2.9 3.5 3.8 6.5 3.8s6.5-.9 6.5-3.8c0-1.5-1.3-2.7-3-2.7"/><path d="M1.5 5.2v5.5c0 1.5 1.3 2.8 3 2.8h7c1.7 0 3-1.3 3-2.8V5.2"/><path d="M1.5 7.9c0 1.5 1.3 2.8 3 2.8h7c1.7 0 3-1.3 3-2.8"/><circle cx="8" cy="9" r=".9" fill="currentColor"/></svg>
+          Wrapped
+        </button>
+        <button class="nav-item" data-view="companion">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2v4a2 2 0 0 1-2 2h-2.4"/><circle cx="8" cy="8" r="6.2"/><path d="M3.8 1.8a6.2 6.2 0 0 0-3 5.2"/><path d="M5 7h.01M11 7h.01"/><path d="M5.2 10.2c.7.9 1.6 1.4 2.8 1.4s2.1-.5 2.8-1.4"/></svg>
+          Companion
         </button>
         <button class="nav-item" data-view="pets">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.6"/><circle cx="11.5" cy="6" r="1.6"/><circle cx="6.5" cy="3.2" r="1.5"/><circle cx="9.5" cy="3.2" r="1.5"/><path d="M5.2 7.8c1.2 1 4.4 1 5.6 0M4.5 9.2c.4 2.2 1.6 3.2 3.5 3.2s3.1-1 3.5-3.2"/></svg>
@@ -385,7 +1595,7 @@
             <button id="quitNo">No</button>
           </span>
         </span>
-        <span class="ver">v0.2</span>
+        <span class="ver">v0.5</span>
       </div>
     </aside>
 
@@ -403,13 +1613,19 @@
         <div class="dash-grid">
           <div class="feed">
             <div class="sec-label">Sessions</div>
+            <div class="filters" id="filters" role="group" aria-label="Filter sessions by state"></div>
+            <div class="toolbar">
+              <label class="searchbox">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+                <input id="search" type="search" placeholder="Search sessions, tools, messages…" aria-label="Search sessions">
+              </label>
+              <button id="sortBtn" class="sortbtn" aria-label="Toggle sort order (currently newest first)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M4 8h5M4 11h2"/></svg>
+                <span id="sortLabel">Newest</span>
+              </button>
+            </div>
+            <div id="dist" class="dist" hidden></div>
             <div id="sessions"></div>
-
-            <div class="sec-label" style="margin-top: 24px">Recent activity</div>
-            <div id="activity"></div>
-
-            <div class="sec-label" style="margin-top: 24px">App time today</div>
-            <div id="wellbeing"></div>
           </div>
 
           <aside class="rail" aria-label="Pet overview">
@@ -435,6 +1651,113 @@
                 Next pet
               </button>
               <button class="btn wide" id="vis">Hide pet</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- FOCUS -->
+      <section class="view" id="view-focus" aria-labelledby="focus-title" hidden>
+        <div class="view-head">
+          <div>
+            <h2 id="focus-title">Focus</h2>
+            <div class="desc">Your week of focus — compared, best days, and where it goes</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="feed">
+            <div class="sec-label">Live focus session</div>
+            <div id="focusSession"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Focus — last 7 days <span class="sec-total" id="wbHistTotal"></span></div>
+            <div id="wbHistory"></div>
+            <div id="wbInsights" style="margin-top: 12px"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Recent activity</div>
+            <div id="activity"></div>
+          </div>
+
+          <aside class="rail" aria-label="Focus breakdown">
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">This week vs last</div>
+              <div id="wbCompare"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">App time today</div>
+              <div id="wellbeing"></div>
+              <div class="wb-total" id="wbTotal" hidden><span>Total focus today</span><b id="wbTotalVal">—</b></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- WRAPPED -->
+      <section class="view" id="view-wrapped" aria-labelledby="wrapped-title" hidden>
+        <div class="view-head">
+          <div>
+            <h2 id="wrapped-title">Wrapped</h2>
+            <div class="desc">Your week in focus — the highs, the streak, and what to keep</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="feed">
+            <div id="wrappedCard"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Focus — last 30 days</div>
+            <div id="sparkline"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Where the week went</div>
+            <div id="weekApps"></div>
+          </div>
+
+          <aside class="rail" aria-label="Week summary">
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">This week vs last</div>
+              <div id="wbCompare"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Focus insights</div>
+              <div id="wbInsights"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- COMPANION -->
+      <section class="view" id="view-companion" aria-labelledby="companion-title" hidden>
+        <div class="view-head">
+          <div>
+            <h2 id="companion-title">Companion</h2>
+            <div class="desc">Your pet grows with you — level, mood, and the little milestones</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="feed">
+            <div class="sec-label">Pet profile</div>
+            <div id="profileCard"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Focus calendar — last 90 days <span class="sec-total" id="hmTotal"></span></div>
+            <div id="heatmap"></div>
+
+            <div class="sec-label" style="margin-top: 24px">Growth milestones</div>
+            <div id="milestones"></div>
+          </div>
+
+          <aside class="rail" aria-label="Companion summary">
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Streak &amp; sessions</div>
+              <div id="companionStats"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Best focus hours</div>
+              <div id="peaksCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Today</div>
+              <div id="companionToday"></div>
             </div>
           </aside>
         </div>
@@ -517,9 +1840,75 @@
 
       var STATE_LABELS = {
         idle: "idle", busy: "working", thinking: "thinking", error: "stuck",
-        success: "done", celebrating: "celebrating", waiting: "waiting"
+        success: "done", celebrating: "celebrating", waiting: "waiting", retry: "retrying"
       };
-      var STATE_KEYS = { idle: "idle", busy: "busy", thinking: "thinking", error: "error", success: "success", celebrating: "success", waiting: "waiting", stale: "waiting" };
+      var STATE_KEYS = {
+        idle: "idle", busy: "busy", thinking: "thinking", error: "error",
+        success: "success", celebrating: "celebrating", waiting: "waiting",
+        stale: "waiting", retry: "retry"
+      };
+      var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      var ICON_STAR = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6 9.7 5l3.8.5-2.8 2.6.7 3.8L8 10.2l-3.4 1.7.7-3.8L2.5 5.5 6.3 5z"/></svg>';
+      var ICON_ZAP = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.2 1 3.8 9H7L6 15l6.2-8.4H9z"/></svg>';
+
+      /* retries count as working for stats/filters but get their own look */
+      function filterKey(st) {
+        var k = STATE_KEYS[st] || "idle";
+        return k === "retry" ? "busy" : k;
+      }
+
+      /* ---------- session filter chips ---------- */
+      var FILTERS = [
+        { id: "all", label: "All" },
+        { id: "busy", label: "Working" },
+        { id: "thinking", label: "Thinking" },
+        { id: "error", label: "Errors" }
+      ];
+      var filter = "all";
+      var query = "";
+      var sortDesc = true;
+      var _lastSessions = [];
+      var _filtersSig = "";
+
+      function renderFilters(list) {
+        var el = document.getElementById("filters");
+        var counts = { all: (list || []).length, busy: 0, thinking: 0, error: 0 };
+        (list || []).forEach(function (s) {
+          var k = filterKey(s.state);
+          if (k === "busy") counts.busy++;
+          else if (k === "thinking") counts.thinking++;
+          else if (k === "error") counts.error++;
+        });
+        // Rebuild chips only when the active filter or counts actually change,
+        // so frequent polls don't churn the DOM under the user's cursor.
+        var sig = JSON.stringify([filter, counts]);
+        if (sig === _filtersSig && el.childElementCount) return;
+        _filtersSig = sig;
+        el.innerHTML = "";
+        FILTERS.forEach(function (f) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "fbtn";
+          b.setAttribute("aria-pressed", String(filter === f.id));
+          b.setAttribute("aria-label", f.label + ", " + counts[f.id] + " session(s)");
+          b.setAttribute("data-filter", f.id);
+          var n = document.createElement("span");
+          n.className = "n";
+          n.textContent = counts[f.id];
+          b.appendChild(document.createTextNode(f.label));
+          b.appendChild(n);
+          b.addEventListener("click", function () {
+            filter = f.id;
+            _sessSig = "";
+            renderFilters(_lastSessions);
+            renderSessions(_lastSessions);
+            // restore focus to the chip that was clicked (chips are rebuilt)
+            var nb = el.querySelector('[data-filter="' + f.id + '"]');
+            if (nb) nb.focus();
+          });
+          el.appendChild(b);
+        });
+      }
 
       function whenBridge(timeoutMs) {
         return new Promise(function (resolve) {
@@ -563,14 +1952,52 @@
         return h + "h ago";
       }
 
+      /* ---------- state distribution bar ---------- */
+      var _distSig = "";
+      function renderDist(list) {
+        var el = document.getElementById("dist");
+        var counts = { busy: 0, thinking: 0, error: 0, celebrating: 0, other: 0 };
+        (list || []).forEach(function (s) {
+          var k = filterKey(s.state);
+          if (k === "busy") counts.busy++;
+          else if (k === "thinking") counts.thinking++;
+          else if (k === "error") counts.error++;
+          else if (k === "celebrating") counts.celebrating++;
+          else counts.other++;
+        });
+        var sig = JSON.stringify(counts);
+        if (sig === _distSig) return;
+        _distSig = sig;
+        var total = counts.busy + counts.thinking + counts.error + counts.celebrating + counts.other;
+        if (!total) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        function seg(k, cls) {
+          if (!counts[k]) return "";
+          return '<i class="' + cls + '" style="width:' + (counts[k] / total * 100).toFixed(1) +
+            '%" title="' + counts[k] + " " + cls + '"></i>';
+        }
+        var bar = seg("busy", "busy") + seg("thinking", "thinking") +
+          seg("error", "error") + seg("celebrating", "celebrating") + seg("other", "other");
+        var LAB = { busy: "working", thinking: "thinking", error: "errors",
+          celebrating: "celebrating", other: "idle" };
+        var legend = "";
+        ["busy", "thinking", "error", "celebrating", "other"].forEach(function (k) {
+          if (counts[k]) legend += '<span><b class="' + k + '"></b>' + LAB[k] +
+            ' <span class="n">' + counts[k] + "</span></span>";
+        });
+        el.innerHTML = '<div class="dist-bar" role="img" aria-label="Session state distribution">' +
+          bar + '</div><div class="dist-legend">' + legend + "</div>";
+      }
+
       /* ---------- dashboard: sessions ---------- */
       var _sessSig = "";
       function renderSessions(list) {
+        _lastSessions = list || [];
         var wrap = document.getElementById("sessions");
         var liveCount = document.getElementById("liveCount");
         var busy = 0, think = 0;
         (list || []).forEach(function (s) {
-          var key = STATE_KEYS[s.state || "idle"] || "idle";
+          var key = filterKey(s.state);
           if (key === "busy") busy++;
           if (key === "thinking") think++;
         });
@@ -580,22 +2007,43 @@
         liveCount.textContent = (busy + think) ? (busy + think) + " active"
           : (list && list.length ? list.length + " idle" : "no sessions");
 
-        var sig = JSON.stringify(list || []);
-        if (sig === _sessSig) { updateTimes(list || []); return; }
+        var filtered = (list || []).filter(function (s) {
+          if (filter !== "all" && filterKey(s.state) !== filter) return false;
+          if (query) {
+            var hay = String(s.title || "") + " " + String(s.message || "") + " " +
+              String(s.toolLabel || "") + " " + String(s.toolArgs || "") + " " +
+              String(s.sessionID || "") + " " + String(s.cwd || "");
+            if (hay.toLowerCase().indexOf(query) < 0) return false;
+          }
+          return true;
+        });
+        filtered.sort(sortDesc
+          ? function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }
+          : function (a, b) { return (a.updatedAt || 0) - (b.updatedAt || 0); });
+        var sig = JSON.stringify([filter, query, sortDesc, filtered]);
+        if (sig === _sessSig) { updateTimes(filtered); renderFilters(list); renderDist(list); return; }
         _sessSig = sig;
 
-        if (!list || !list.length) {
-          wrap.innerHTML =
-            '<div class="empty"><div class="art" aria-hidden="true">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V9l8-5 8 5v8"/><path d="M9 17v-4h6v4"/></svg>' +
-            '</div><h3>No active sessions</h3>' +
-            '<p>Start a session in opencode and your pet will react to it live.</p>' +
-            '<div class="hint">$ opencode</div></div>';
+        if (!filtered.length) {
+          if (list && list.length) {
+            wrap.innerHTML =
+              '<div class="empty" style="padding:26px 12px"><h3>Nothing here</h3>' +
+              '<p>' + (query ? "No sessions match your search." : "No active sessions match this filter right now.") + '</p></div>';
+          } else {
+            wrap.innerHTML =
+              '<div class="empty"><div class="art" aria-hidden="true">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V9l8-5 8 5v8"/><path d="M9 17v-4h6v4"/></svg>' +
+              '</div><h3>No active sessions</h3>' +
+              '<p>Start a session in opencode and your pet will react to it live.</p>' +
+              '<div class="hint">$ opencode</div></div>';
+          }
+          renderFilters(list);
+          renderDist(list);
           return;
         }
 
         var rows = "";
-        list.forEach(function (s, i) {
+        filtered.forEach(function (s, i) {
           var st = s.state || "idle";
           var key = STATE_KEYS[st] || "idle";
           var label = STATE_LABELS[st] || st;
@@ -604,19 +2052,61 @@
           var meta = tool + (s.message ? " \u00b7 " + esc(s.message) : "");
           if (!meta) meta = '<span style="color:var(--text3)">' + esc(label) + "</span>";
           var stale = s.stale ? " (stale)" : "";
+          var detail = "";
+          if (s.message || s.toolLabel || s.toolArgs || s.sessionID || s.cwd) {
+            var parts = [];
+            if (s.message) parts.push('<div class="ses-meta kv"><span class="k">msg \u00b7 </span>' + esc(s.message) + "</div>");
+            if (s.toolLabel) parts.push('<div class="ses-meta kv"><span class="k">tool \u00b7 </span>' + esc(s.toolLabel) + "</div>");
+            if (s.toolArgs) parts.push('<div class="ses-meta kv"><span class="k">args \u00b7 </span>' + esc(String(s.toolArgs)) + "</div>");
+            if (s.sessionID) parts.push('<div class="ses-meta kv"><span class="k">id \u00b7 </span>' + esc(s.sessionID) + "</div>");
+            if (s.cwd) parts.push('<div class="ses-meta kv"><span class="k">cwd \u00b7 </span>' + esc(s.cwd) + "</div>");
+            detail = '<div class="ses-detail">' + parts.join("") + "</div>";
+          }
           rows +=
-            '<div class="ses" style="--i:' + i + '">' +
+            '<div class="ses" style="--i:' + i + '" tabindex="0" aria-expanded="false" role="button" aria-label="Session ' + esc(title) + '">' +
             '<span class="ses-dot" data-state="' + esc(key) + '"></span>' +
             '<div class="ses-body">' +
             '<div class="ses-title">' + esc(title) + '<span class="state-chip ' + key + '">' + esc(label) + stale + '</span></div>' +
-            '<div class="ses-meta">' + meta + '</div>' +
+            '<div class="ses-meta">' + meta + '</div>' + detail +
             '</div>' +
             '<span class="ses-time">' + timeAgo(s.updatedAt) + '</span>' +
             '</div>';
         });
 
         wrap.innerHTML = rows;
+        renderFilters(list);
+        renderDist(list);
       }
+
+      /* click or Enter/Space on a session row toggles its detail */
+      document.getElementById("sessions").addEventListener("click", function (e) {
+        var row = e.target.closest ? e.target.closest(".ses") : null;
+        if (row) toggleRow(row);
+      });
+      document.getElementById("sessions").addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var row = e.target.closest ? e.target.closest(".ses") : null;
+        if (row) { e.preventDefault(); toggleRow(row); }
+      });
+      function toggleRow(row) {
+        var open = row.classList.toggle("expanded");
+        row.setAttribute("aria-expanded", String(open));
+      }
+
+      /* search + sort the session feed */
+      document.getElementById("search").addEventListener("input", function (e) {
+        query = e.target.value.trim().toLowerCase();
+        _sessSig = "";
+        renderSessions(_lastSessions);
+      });
+      document.getElementById("sortBtn").addEventListener("click", function () {
+        sortDesc = !sortDesc;
+        document.getElementById("sortLabel").textContent = sortDesc ? "Newest" : "Oldest";
+        document.getElementById("sortBtn").setAttribute("aria-label",
+          "Toggle sort order (currently " + (sortDesc ? "newest" : "oldest") + " first)");
+        _sessSig = "";
+        renderSessions(_lastSessions);
+      });
 
       function updateTimes(list) {
         var spans = document.querySelectorAll("#sessions .ses-time");
@@ -770,6 +2260,9 @@
         });
         document.getElementById("view-dash").hidden = name !== "dash";
         document.getElementById("view-pets").hidden = name !== "pets";
+        document.getElementById("view-focus").hidden = name !== "focus";
+        document.getElementById("view-wrapped").hidden = name !== "wrapped";
+        document.getElementById("view-companion").hidden = name !== "companion";
       }
 
       document.querySelectorAll(".nav-item").forEach(function (b) {
@@ -778,6 +2271,9 @@
 
       document.addEventListener("keydown", function (e) {
         if (e.key !== "Escape") return;
+        // Escape inside the session search clears the input (native <input
+        // type="search"> behavior) — never close the window for that.
+        if (document.activeElement && document.activeElement.id === "search") return;
         if (!document.getElementById("quitConfirm").hidden) { hideConfirm(); return; }
         if (api) api.hide_control().catch(function () {});
       });
@@ -797,6 +2293,484 @@
         }
         if (handled) { e.preventDefault(); moveFocus(idx); }
       });
+
+      /* ---------- live focus session ---------- */
+      var _fsSig = "";
+      var _fsTarget = 25;
+      var RING_R = 33.5, RING_C = 2 * Math.PI * RING_R;
+      function focusMoveFor(n) {
+        var s = String(n == null ? "" : n).toLowerCase();
+        if (s.indexOf("pika") >= 0) return { g: "\u26a1", move: "Thunderbolt" };
+        if (s.indexOf("charm") >= 0) return { g: "\ud83d\udd25", move: "Ember" };
+        if (s.indexOf("dora") >= 0) return { g: "\ud83d\udca8", move: "Air Cannon" };
+        if (s.indexOf("gardev") >= 0) return { g: "\u2728", move: "Confusion" };
+        if (s.indexOf("girat") >= 0) return { g: "\ud83c\udf11", move: "Shadow Claw" };
+        if (s.indexOf("cat") >= 0) return { g: "\ud83d\udc3e", move: "Scratch" };
+        return { g: "\u2726", move: "Focus Burst" };
+      }
+
+      function renderFocusSession(fs) {
+        var el = document.getElementById("focusSession");
+        if (!el) return;
+        fs = fs || {};
+        var active = !!fs.active;
+        var wilted = !!fs.wilted;
+        // Structural identity ONLY — live progress is driven by a rAF updater,
+        // so polls never rebuild the whole card (fixes the sluggish stepped ring).
+        var sig = JSON.stringify([
+          active, wilted, fs.app || "", fs.targetMin || 0, fs.startedAt || 0
+        ]);
+        if (sig === _fsSig && el.childElementCount) return;
+        _fsSig = sig;
+
+        var prog = Math.max(0, Math.min(1, fs.progress || 0));
+        var pct = Math.round(prog * 100);
+        var startedMs = fs.startedAt || Date.now();
+        var targetSec = (fs.targetMin || 0) * 60;
+        var petName = state.petName || "Pet";
+        var mv = focusMoveFor(petName);
+        var emoji = active
+          ? (wilted ? "\ud83e\uddea" : (pct >= 100 ? "\ud83c\udf31" : (pct >= 50 ? "\ud83c\udf3f" : "\ud83c\udf31")))
+          : "\ud83c\udf31";
+
+        var eyebrow, title, status, statusCls = "";
+        if (active) {
+          if (wilted) {
+            eyebrow = "The pact is breaking";
+            title = "Switch back to " + esc(fs.app || "your app");
+            status = "Stay put \u2014 <b>save the sprout</b>";
+            statusCls = " wilted";
+          } else {
+            eyebrow = "A pact with " + esc(petName);
+            title = esc(petName) + ' \u00b7 <span class="fs-move">' + mv.g + " " + esc(mv.move) + "</span>";
+            status = "Focusing in " + esc(fs.app || "your app") +
+              ' <span class="fs-remain">\u00b7 ' + Math.ceil(targetSec / 60) + "m left</span>";
+          }
+        } else {
+          eyebrow = "A focus pact";
+          title = "Call " + esc(petName) + " to your side";
+          status = "Choose a pact length and start. Stay in one app and " + esc(petName) + " blooms \u2014 switch away and it wilts.";
+        }
+
+        var btn = active
+          ? '<button class="btn fsess-btn stop" id="fsStop">Stop session</button>'
+          : '<button class="btn fsess-btn" id="fsStart">\u25b6 Start focus</button>';
+        var chips = [15, 25, 45, 60, 90].map(function (m) {
+          return '<button class="min-chip" data-min="' + m + '" aria-pressed="' + (m === _fsTarget) + '">' + m + "m</button>";
+        }).join("");
+        var offset = active ? RING_C * (1 - prog) : RING_C;
+        el.innerHTML =
+          '<div class="fsess" data-active="' + (active ? "1" : "0") + '" data-started="' + startedMs + '" data-target="' + targetSec + '">' +
+          '<div class="ring-wrap">' +
+          '<svg class="ring' + (wilted ? " wilted" : "") + '" viewBox="0 0 78 78" role="img" aria-label="Focus progress ' + pct + '%">' +
+          '<circle class="ring-bg" cx="39" cy="39" r="' + RING_R + '"/>' +
+          '<circle class="ring-fg" cx="39" cy="39" r="' + RING_R + '" stroke-dasharray="' + RING_C.toFixed(1) + '" stroke-dashoffset="' + offset.toFixed(1) + '"/>' +
+          '</svg>' +
+          '<span class="ring-em" aria-hidden="true">' + emoji + '</span>' +
+          '</div>' +
+          '<div class="fsess-info">' +
+          '<div class="fsess-eyebrow">' + eyebrow + '</div>' +
+          '<div class="fsess-title">' + title + '</div>' +
+          '<div class="fsess-sub' + statusCls + '">' + status + '</div>' +
+          '<div class="mins" role="group" aria-label="Focus length">' + chips + '</div>' +
+          '</div>' +
+          '<div class="fsess-actions">' + btn + '</div>' +
+          '</div>';
+        // wire actions after DOM insert
+        var start = el.querySelector("#fsStart");
+        if (start) start.addEventListener("click", function () {
+          if (api) api.start_focus(_fsTarget).then(function () { _fsSig = ""; refreshFocusSession(); }).catch(function () {});
+        });
+        var stop = el.querySelector("#fsStop");
+        if (stop) stop.addEventListener("click", function () {
+          if (api) api.stop_focus().then(function () { _fsSig = ""; refreshFocusSession(); }).catch(function () {});
+        });
+        el.querySelectorAll(".min-chip").forEach(function (b) {
+          b.addEventListener("click", function () {
+            _fsTarget = +b.dataset.min;
+            el.querySelectorAll(".min-chip").forEach(function (x) { x.setAttribute("aria-pressed", String(+x.dataset.min === _fsTarget)); });
+          });
+        });
+      }
+
+      function refreshFocusSession() {
+        if (!api) return;
+        api.get_focus_state().then(function (fs) {
+          if (fs && typeof fs === "object") renderFocusSession(fs);
+        }).catch(function () {});
+      }
+
+      /* ---------- pet profile ---------- */
+      var MOOD_EMOJI = { happy: "\ud83d\ude04", tired: "\ud83d\ude34", sad: "\ud83d\ude22", neutral: "\ud83d\ude42" };
+      var MOOD_LABEL = { happy: "happy", tired: "tired", sad: "sad", neutral: "chill" };
+      var _profSig = "";
+      function renderProfile(prof) {
+        var el = document.getElementById("profileCard");
+        if (!el) return;
+        var sig = JSON.stringify(prof || {});
+        if (sig === _profSig && el.childElementCount) return;
+        _profSig = sig;
+        prof = prof || {};
+        var mood = MOOD_LABEL[prof.mood] || "chill";
+        var pct = Math.max(0, Math.min(100, Math.round((prof.xpPct || 0) * 100)));
+        var lvl = prof.level || 1, xp = prof.xp || 0, next = prof.xpNext || 100;
+        var stage = prof.stage || {};
+        var stageChip = stage.name ?
+          '<span class="stage-chip" title="Evolution stage">' + (stage.emoji || "") + ' ' + esc(stage.name) + '</span>' : "";
+        el.innerHTML =
+          '<div class="prof">' +
+          '<div class="prof-top">' +
+          '<div class="prof-ava" aria-hidden="true">' + (stage.emoji || MOOD_EMOJI[prof.mood] || "\ud83d\ude42") + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+          '<div class="prof-name">' + esc(state.petName || "Pet") + ' <span class="mood-chip ' + esc(prof.mood || "neutral") + '">' + mood + '</span>' + stageChip + '</div>' +
+          '<div class="lvl">level <b>' + lvl + '</b></div>' +
+          '</div>' +
+          '</div>' +
+          '<div class="xpbar"><span style="width:' + pct + '%"></span></div>' +
+          '<div class="xplab"><span>' + xp + ' XP</span><span>' + next + ' XP to level ' + (lvl + 1) + '</span></div>' +
+          '<div class="prof-stats">' +
+          '<div class="stat"><b>' + (prof.streak || 0) + '</b><span>day streak</span></div>' +
+          '<div class="stat"><b>' + lvl + '</b><span>level</span></div>' +
+          '<div class="stat"><b>' + xp + '</b><span>xp</span></div>' +
+          '</div>' +
+          '</div>';
+      }
+
+      function refreshProfile() {
+        if (!api) return;
+        api.get_pet_profile().then(function (p) {
+          if (p && typeof p === "object") renderProfile(p);
+        }).catch(function () {});
+      }
+
+      /* ---------- weekly wrapped ---------- */
+      var _wrapSig = "";
+      function renderWrapped(w) {
+        var el = document.getElementById("wrappedCard");
+        if (!el) return;
+        var sig = JSON.stringify(w || {});
+        if (sig === _wrapSig && el.childElementCount) return;
+        _wrapSig = sig;
+        w = w || {};
+        var week = w.weekSeconds || 0;
+        var prev = w.prevWeekSeconds || 0;
+        var delta = null;
+        if (week && prev > 0) delta = Math.round((week - prev) / prev * 100);
+        else if (week && !prev) delta = null;
+        var bestName = "\u2014";
+        if (w.bestDay) {
+          var bd = new Date(w.bestDay.date + "T12:00:00");
+          bestName = isNaN(bd.getTime()) ? esc(w.bestDay.date) : DAYS[bd.getDay()];
+        }
+        var share = buildShare(w);
+        el.innerHTML =
+          '<div class="wrap">' +
+          '<div class="wrap-eyebrow">Your week in focus</div>' +
+          '<div class="wrap-title">' + fmtDur(week) + '</div>' +
+          '<div class="wrap-sub">' + (delta == null ? "Your first charted week \u2014 baseline set." : (delta >= 0 ? "\u25b2 " + delta + "% vs last week" : "\u25bc " + Math.abs(delta) + "% vs last week")) + '</div>' +
+          '<div class="wrap-grid">' +
+          '<div class="wrap-cell"><div class="wv">' + (w.focusSessions || 0) + '</div><div class="wl">focus sessions</div></div>' +
+          '<div class="wrap-cell"><div class="wv">' + (w.streak || 0) + '</div><div class="wl">day streak</div></div>' +
+          '<div class="wrap-cell"><div class="wv">' + bestName + '</div><div class="wl">best day</div></div>' +
+          '<div class="wrap-cell dim"><div class="wv">' + (w.topApp ? esc(w.topApp.app) : "\u2014") + '</div><div class="wl">top app</div></div>' +
+          '</div>' +
+          '<button class="wrap-share" id="wrapShare">' +
+          '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="2"/><circle cx="12.5" cy="4" r="2"/><circle cx="12.5" cy="12" r="2"/><path d="m5.5 7 4.8-2.6M5.5 9l4.8 2.6"/></svg>' +
+          'Share my week</button>' +
+          '</div>';
+        var sh = el.querySelector("#wrapShare");
+        if (sh) sh.addEventListener("click", function () {
+          copyText(share);
+        });
+      }
+
+      function buildShare(w) {
+        w = w || {};
+        var week = fmtDur(w.weekSeconds || 0);
+        var lines = ["OpenCode Pet \u2014 My Week in Focus", ""];
+        lines.push("\u2022 " + week + " focused this week");
+        if (w.focusSessions) lines.push("\u2022 " + w.focusSessions + " focus sessions completed");
+        if (w.streak) lines.push("\u2022 " + w.streak + "-day focus streak");
+        if (w.bestDay) {
+          var bdText = String(w.bestDay.date || "");
+          lines.push("\u2022 Best day: " + bdText + " (" + fmtDur(w.bestDay.seconds) + ")");
+        }
+        if (w.topApp) {
+          var topText = String(w.topApp.app || "");
+          lines.push("\u2022 Most time in " + topText);
+        }
+        if (w.xp) lines.push("\u2022 Pet earned " + w.xp + " XP");
+        lines.push("", "Made with OpenCode Pet");
+        return lines.join("\n");
+      }
+
+      function copyDone() { toast("Copied to clipboard", "ok"); }
+      function copyText(txt) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(copyDone, function () { fallbackCopy(txt); });
+        } else fallbackCopy(txt);
+      }
+      function fallbackCopy(txt) {
+        var ta = document.createElement("textarea");
+        ta.value = txt;
+        ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); copyDone(); } catch (e) { toast("Copy failed", "error"); }
+        document.body.removeChild(ta);
+      }
+
+      function refreshWrapped() {
+        if (!api) return;
+        api.get_weekly_wrapped().then(function (w) {
+          if (w && typeof w === "object") renderWrapped(w);
+        }).catch(function () {});
+      }
+
+      /* ---------- 30-day sparkline ---------- */
+      var _sparkSig = "";
+      function renderSparkline(list) {
+        var el = document.getElementById("sparkline");
+        if (!el) return;
+        var sig = JSON.stringify(list || []);
+        if (sig === _sparkSig && el.childElementCount) return;
+        _sparkSig = sig;
+        if (!list || !list.some(function (d) { return d.seconds > 0; })) {
+          el.innerHTML = '<div class="empty" style="padding:20px 12px"><p>Your 30-day focus trail starts building now.</p></div>';
+          return;
+        }
+        var max = 1;
+        list.forEach(function (d) { if (d.seconds > max) max = d.seconds; });
+        var today = localDate(new Date());
+        var bars = "";
+        list.forEach(function (d) {
+          var h = d.seconds ? Math.max(8, Math.round(d.seconds / max * 100)) : 2;
+          var tip = fmtDur(d.seconds) + " \u00b7 " + d.date + (d.date === today ? " (today)" : "");
+          bars += '<i style="height:' + h + '%" title="' + esc(tip) + '"' + (d.date === today ? ' class="today"' : "") + '>' +
+            '<span class="sp-tip">' + tip + '</span></i>';
+        });
+        el.innerHTML = '<div class="spark" role="img" aria-label="Focus time over the last 30 days">' + bars + '</div>' +
+          '<div class="spark-legend"><span>30 days ago</span><span>today</span></div>';
+      }
+
+      function refreshSparkline() {
+        if (!api) return;
+        api.get_wellbeing_history(30).then(function (list) {
+          if (Array.isArray(list)) renderSparkline(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- per-app week bars ---------- */
+      var _waSig = "";
+      function renderWeekApps(list) {
+        var el = document.getElementById("weekApps");
+        if (!el) return;
+        var sig = JSON.stringify(list || []);
+        if (sig === _waSig && el.childElementCount) return;
+        _waSig = sig;
+        if (!list || !list.length) {
+          el.innerHTML = '<div class="wa-empty">App time accrues as you work \u2014 per-app, per day.</div>';
+          return;
+        }
+        var max = list[0].seconds || 1;
+        var rows = "";
+        list.forEach(function (w) {
+          var pct = Math.round(w.seconds / max * 100);
+          var mins = Math.max(1, Math.round(w.seconds / 60));
+          rows += '<div class="wa-row">' +
+            '<span class="wa-app" title="' + esc(w.app) + '">' + esc(w.app) + '</span>' +
+            '<span class="wa-bar"><span style="width:' + pct + '%"></span></span>' +
+            '<span class="wa-min">' + mins + 'm</span></div>';
+        });
+        el.innerHTML = rows;
+      }
+
+      function refreshWeekApps() {
+        if (!api) return;
+        api.get_week_apps(7).then(function (list) {
+          if (Array.isArray(list)) renderWeekApps(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- focus calendar heatmap (90 days) ---------- */
+      var _hmSig = "";
+      function hmLevel(secs) {
+        var m = secs / 60;
+        if (m >= 300) return "l5";
+        if (m >= 180) return "l4";
+        if (m >= 90) return "l3";
+        if (m >= 45) return "l2";
+        if (m >= 15) return "l1";
+        return "";
+      }
+      function renderHeatmap(list) {
+        var el = document.getElementById("heatmap");
+        if (!el) return;
+        var sig = JSON.stringify(list || []);
+        if (sig === _hmSig && el.childElementCount) return;
+        _hmSig = sig;
+        var totalEl = document.getElementById("hmTotal");
+        if (!list || !list.length) {
+          el.innerHTML = '<div class="empty" style="padding:20px 12px"><p>Focus days light up here as you work.</p></div>';
+          totalEl.textContent = "";
+          return;
+        }
+        var sum = 0;
+        list.forEach(function (d) { sum += d.seconds; });
+        var h = Math.floor(sum / 3600);
+        var m = Math.round((sum % 3600) / 60);
+        totalEl.textContent = (h > 0 ? h + "h " : "") + m + "m in 90 days";
+        // grid: columns = ISO weeks, rows = Mon..Sun
+        var cells = list.map(function (d) {
+          var dt = new Date(d.date + "T12:00:00");
+          return { d: d, day: dt.getDay() };
+        });
+        var cols = [];
+        for (var i = 0; i < cells.length; i += 7) {
+          cols.push(cells.slice(i, i + 7));
+        }
+        var html = '<div class="hm-wrap"><div class="hm" role="img" aria-label="Focus calendar, last 90 days">';
+        cols.forEach(function (col) {
+          html += '<div class="hm-col">';
+          for (var d = 1; d <= 7; d++) {  // rows Mon(1)..Sun(0)
+            var cell = null;
+            for (var k = 0; k < col.length; k++) {
+              var dow = col[k].day === 0 ? 7 : col[k].day;
+              if (dow === d) { cell = col[k]; break; }
+            }
+            if (!cell) { html += '<span class="hm-cell"></span>'; continue; }
+            var secs = cell.d.seconds;
+            var tip = fmtDur(secs) + " \u00b7 " + cell.d.date;
+            html += '<span class="hm-cell ' + hmLevel(secs) + '" title="' + esc(tip) + '">' +
+              '<span class="hm-tip">' + esc(tip) + '</span></span>';
+          }
+          html += '</div>';
+        });
+        html += '</div></div>';
+        html += '<div class="hm-legend"><span>Less</span>' +
+          ['', 'l1', 'l2', 'l3', 'l4', 'l5'].map(function (l) {
+            return '<span class="hm-cell ' + l + '"></span>';
+          }).join("") + '<span>More</span></div>';
+        el.innerHTML = html;
+      }
+
+      function refreshHeatmap() {
+        if (!api) return;
+        api.get_wellbeing_history(90).then(function (list) {
+          if (Array.isArray(list)) renderHeatmap(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- best focus hours (repurposed bestDay analysis) ---------- */
+      var _pkSig = "";
+      function renderPeaks(pk) {
+        var el = document.getElementById("peaksCard");
+        if (!el) return;
+        var sig = JSON.stringify(pk || {});
+        if (sig === _pkSig && el.childElementCount) return;
+        _pkSig = sig;
+        pk = pk || {};
+        if (!pk.hours || !pk.best) {
+          el.innerHTML = '<div class="empty" style="padding:14px 8px"><p>Work a few sessions and your best hours emerge.</p></div>';
+          return;
+        }
+        var max = 1;
+        pk.hours.forEach(function (x) { if (x.seconds > max) max = x.seconds; });
+        var bestH = pk.best.hour;
+        var runnerH = pk.runnerUp ? pk.runnerUp.hour : -1;
+        var bars = "";
+        pk.hours.forEach(function (x) {
+          var hh = Math.max(2, Math.round(x.seconds / max * 100));
+          var cls = x.hour === bestH ? " best" : (x.hour === runnerH ? " runner" : "");
+          var tip = fmtDur(x.seconds) + " \u00b7 " + (x.hour === 0 ? "12 AM" : (x.hour < 12 ? x.hour + " AM" : (x.hour === 12 ? "12 PM" : (x.hour - 12) + " PM")));
+          bars += '<i style="height:' + hh + '%" class="' + cls.trim() + '" title="' + esc(tip) + '">' +
+            '<span class="pk-tip">' + esc(tip) + '</span></i>';
+        });
+        var span = pk.spanLabel || "";
+        el.innerHTML =
+          '<div class="pk" role="img" aria-label="Focus by hour of day">' + bars + '</div>' +
+          '<div class="pk-axis"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>11p</span></div>' +
+          '<div class="pk-line">You focus best around <b>' + esc(pk.best.label) + '</b>' +
+          (span ? ' \u2014 ' + esc(span) : '') + ' \u00b7 ' + pk.best.pct + '% of your week</div>';
+      }
+
+      function refreshPeaks() {
+        if (!api) return;
+        api.get_focus_peaks(7).then(function (pk) {
+          if (pk && typeof pk === "object") renderPeaks(pk);
+        }).catch(function () {});
+      }
+
+      /* ---------- companion milestones ---------- */
+      function milestoneText(e) {
+        if (e.kind === "levelUp") return { t: "Level " + (e.level || "?") + "! \ud83c\udf89", cls: "celebrating" };
+        if (e.kind === "focusDone") return { t: "Completed a " + (e.minutes || "?") + " min focus session", cls: "busy" };
+        if (e.kind === "focusWilt") return { t: "Sprout wilted \u2014 focus broken", cls: "error" };
+        if (e.kind === "state" && e.state === "success") return { t: "A task completed", cls: "success" };
+        if (e.kind === "state" && e.state === "error") return { t: "Hit an error \u2014 pet stood by you", cls: "error" };
+        return null;
+      }
+      function renderMilestones(list) {
+        var el = document.getElementById("milestones");
+        if (!el) return;
+        var events = (list || []).filter(function (e) { return milestoneText(e); });
+        if (!events.length) {
+          el.innerHTML = '<div class="empty" style="padding:24px 12px"><p>Milestones appear as your pet levels up, completes focus sessions, and reacts to your work.</p></div>';
+          return;
+        }
+        var rows = events.slice(0, 14).map(function (e, i) {
+          var m = milestoneText(e);
+          return '<div class="ses" style="--i:' + i + '">' +
+            '<span class="ses-dot" data-state="' + m.cls + '"></span>' +
+            '<div class="ses-body"><div class="ses-meta">' + esc(m.t) + '</div></div>' +
+            '<span class="ses-time">' + timeAgo(Math.floor((e.t || 0) * 1000)) + '</span></div>';
+        }).join("");
+        el.innerHTML = rows;
+      }
+
+      function renderCompanionStats(w) {
+        var el = document.getElementById("companionStats");
+        if (!el) return;
+        w = w || {};
+        el.innerHTML =
+          '<div class="cmp">' +
+          '<div><span class="cmp-k">Streak</span><b class="cmp-v">' + (w.streak || 0) + 'd</b></div>' +
+          '<div><span class="cmp-k">Sessions</span><b class="cmp-v dim">' + (w.focusSessions || 0) + '</b></div>' +
+          '<div><span class="cmp-k">Week</span><b class="cmp-v">' + fmtDur(w.weekSeconds || 0) + '</b></div>' +
+          '<div><span class="cmp-k">XP</span><b class="cmp-v dim">' + (w.xp || 0) + '</b></div>' +
+          '</div>';
+      }
+
+      function renderCompanionToday(wb) {
+        var el = document.getElementById("companionToday");
+        if (!el) return;
+        if (!wb || !wb.length) {
+          el.innerHTML = '<div class="empty" style="padding:14px 8px"><p>Time accrues while you work.</p></div>';
+          return;
+        }
+        var total = 0;
+        wb.forEach(function (w) { total += w.seconds; });
+        var h = Math.floor(total / 3600), m = Math.round((total % 3600) / 60);
+        if (m === 60) { h++; m = 0; }
+        el.innerHTML =
+          '<div class="cmp">' +
+          '<div><span class="cmp-k">Focus today</span><b class="cmp-v">' + (h > 0 ? h + "h " : "") + m + 'm</b></div>' +
+          '<div><span class="cmp-k">Top app</span><b class="cmp-v dim">' + esc(wb[0].app) + '</b></div>' +
+          '</div>';
+      }
+
+      function refreshCompanion() {
+        if (!api) return;
+        api.get_logs(400).then(function (list) {
+          if (Array.isArray(list)) renderMilestones(list);
+        }).catch(function () {});
+        api.get_weekly_wrapped().then(function (w) {
+          if (w && typeof w === "object") renderCompanionStats(w);
+        }).catch(function () {});
+        api.get_wellbeing().then(function (wb) {
+          if (Array.isArray(wb)) renderCompanionToday(wb);
+        }).catch(function () {});
+      }
 
       /* ---------- polling ---------- */
       function refreshSessions() {
@@ -866,10 +2840,20 @@
 
       function renderWellbeing(list) {
         var wrap = document.getElementById("wellbeing");
+        var totalEl = document.getElementById("wbTotal");
+        var totalVal = document.getElementById("wbTotalVal");
         if (!list || !list.length) {
           wrap.innerHTML = '<div class="empty" style="padding:18px 12px"><p>App time starts accruing while you work \u2014 per-app, per day.</p></div>';
+          totalEl.hidden = true;
           return;
         }
+        var total = 0;
+        list.forEach(function (w) { total += w.seconds; });
+        var h = Math.floor(total / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        totalVal.textContent = (h > 0 ? h + "h " : "") + m + "m";
+        totalEl.hidden = false;
+
         var max = list[0].seconds || 1;
         var rows = "";
         list.forEach(function (w) {
@@ -887,6 +2871,118 @@
         if (!api) return;
         api.get_wellbeing().then(function (list) {
           if (Array.isArray(list)) renderWellbeing(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- 7-day focus history chart ---------- */
+      function localDate(d) {
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+          String(d.getDate()).padStart(2, "0");
+      }
+      function fmtDur(secs) {
+        secs = Math.max(0, Math.round(secs || 0));
+        var h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
+        if (m === 60) { h += 1; m = 0; }
+        if (h > 0) return m ? h + "h " + m + "m" : h + "h";
+        return m + "m";
+      }
+      var _histSig = "";
+      function renderWellbeingHistory(list) {
+        var wrap = document.getElementById("wbHistory");
+        var totalEl = document.getElementById("wbHistTotal");
+        var sig = JSON.stringify(list || []);
+        if (sig === _histSig && wrap.childElementCount) return;
+        _histSig = sig;
+        var hasData = (list || []).some(function (d) { return d.seconds > 0; });
+        if (!hasData) {
+          wrap.innerHTML = '<div class="empty" style="padding:16px 12px"><p>Focus time builds up day by day — work in any app and your week takes shape.</p></div>';
+          totalEl.textContent = "";
+          return;
+        }
+        var sum = 0, max = 1;
+        list.forEach(function (d) { sum += d.seconds; if (d.seconds > max) max = d.seconds; });
+        totalEl.textContent = fmtDur(sum) + " this week";
+        var today = localDate(new Date());
+        var rows = "";
+        list.forEach(function (d) {
+          var pct = Math.max(3, Math.min(78, Math.round(d.seconds / max * 100)));
+          var dt = new Date(d.date + "T12:00:00");
+          var label = isNaN(dt.getTime()) ? String(d.date).slice(5) : DAYS[dt.getDay()];
+          var tip = fmtDur(d.seconds) + (d.seconds ? " \u00b7 " + d.date : " \u2014 no focus");
+          rows += '<div class="wk-bar" title="' + esc(tip) + '" role="img" aria-label="' + esc(tip) + '">' +
+            '<span class="wk-tip">' + fmtDur(d.seconds) + '</span>' +
+            '<i style="height:' + pct + '%"></i>' +
+            '<span class="wk-day' + (d.date === today ? " today" : "") + '">' + label + '</span></div>';
+        });
+        wrap.innerHTML = '<div class="wk">' + rows + '</div>';
+      }
+
+      function refreshWellbeingHistory() {
+        if (!api) return;
+        api.get_wellbeing_history(7).then(function (list) {
+          if (Array.isArray(list)) renderWellbeingHistory(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- focus insights + week comparison ---------- */
+      var _insSig = "";
+      function renderInsights(ins) {
+        var el = document.getElementById("wbInsights");
+        if (!el) return;
+        var sig = JSON.stringify(ins || {});
+        if (sig === _insSig && el.childElementCount) return;
+        _insSig = sig;
+        if (!ins || (!ins.bestDay && !ins.topApp)) { el.innerHTML = ""; return; }
+        var rows = "";
+        if (ins.bestDay) {
+          var dt = new Date(ins.bestDay.date + "T12:00:00");
+          var name = isNaN(dt.getTime()) ? ins.bestDay.date : DAYS[dt.getDay()];
+          rows += '<div class="ins-row">' +
+            '<span class="ins-ic gold">' + ICON_STAR + '</span>' +
+            '<div class="ins-body"><div class="ins-main">Best day — ' + name + '</div>' +
+            '<div class="ins-sub">' + fmtDur(ins.bestDay.seconds) + " of focus</div></div></div>";
+        }
+        if (ins.topApp) {
+          rows += '<div class="ins-row">' +
+            '<span class="ins-ic amber">' + ICON_ZAP + '</span>' +
+            '<div class="ins-body"><div class="ins-main">Most time in ' + esc(ins.topApp.app) + '</div>' +
+            '<div class="ins-sub">' + fmtDur(ins.topApp.seconds) + " today</div></div></div>";
+        }
+        el.innerHTML = '<div class="ins">' + rows + "</div>";
+      }
+
+      var _cmpSig = "";
+      function renderCompare(ins) {
+        var el = document.getElementById("wbCompare");
+        if (!el) return;
+        var sig = JSON.stringify(ins || {});
+        if (sig === _cmpSig && el.childElementCount) return;
+        _cmpSig = sig;
+        if (!ins || (!ins.weekSeconds && !ins.prevWeekSeconds)) {
+          el.innerHTML = '<div class="empty" style="padding:16px 8px"><p>Give it a week — history starts building now.</p></div>';
+          return;
+        }
+        var pct = ins.deltaPct;
+        var badge, caption;
+        if (pct == null) { badge = '<span class="cmp-badge first">first week</span>'; caption = "baseline starts now"; }
+        else if (pct === 0) { badge = '<span class="cmp-badge flat">same</span>'; caption = "steady as last week"; }
+        else if (pct > 0) { badge = '<span class="cmp-badge up">\u25b2 ' + pct + "%</span>"; caption = "vs last week"; }
+        else { badge = '<span class="cmp-badge down">\u25bc ' + Math.abs(pct) + "%</span>"; caption = "vs last week"; }
+        el.innerHTML =
+          '<div class="cmp">' +
+          '<div><span class="cmp-k">This week</span><b class="cmp-v">' + fmtDur(ins.weekSeconds) + '</b></div>' +
+          '<div><span class="cmp-k">Last week</span><b class="cmp-v dim">' + fmtDur(ins.prevWeekSeconds) + '</b></div>' +
+          '<div class="cmp-d">' + badge + '<span>' + caption + '</span></div>' +
+          '</div>';
+      }
+
+      function refreshInsights() {
+        if (!api) return;
+        api.get_wellbeing_insights().then(function (ins) {
+          if (ins && typeof ins === "object") {
+            renderInsights(ins);
+            renderCompare(ins);
+          }
         }).catch(function () {});
       }
 
@@ -928,7 +3024,22 @@
           renderPets();
           renderControls();
           renderRailPet();
-          renderSessions([]);
+          renderSessions(DEMO_SESSIONS);
+          renderActivity(DEMO_LOGS);
+          renderWellbeing(DEMO_WB);
+          renderWellbeingHistory(DEMO_WB_HISTORY);
+          renderInsights(DEMO_INSIGHTS);
+          renderCompare(DEMO_INSIGHTS);
+          renderFocusSession(DEMO_FOCUS);
+          renderProfile(DEMO_PROFILE);
+          renderWrapped(DEMO_WRAPPED);
+          renderSparkline(DEMO_WB_HISTORY_30);
+          renderWeekApps(DEMO_WEEK_APPS);
+          renderMilestones(DEMO_LOGS);
+          renderCompanionStats(DEMO_WRAPPED);
+          renderCompanionToday(DEMO_WB);
+          renderHeatmap(DEMO_WB_HISTORY_90);
+          renderPeaks(DEMO_PEAKS);
           return;
         }
         try {
@@ -956,10 +3067,106 @@
         refreshSessions();
         refreshActivity();
         refreshWellbeing();
+        refreshWellbeingHistory();
+        refreshInsights();
+        refreshFocusSession();
+        refreshProfile();
+        refreshWrapped();
+        refreshSparkline();
+        refreshWeekApps();
+        refreshCompanion();
+        refreshHeatmap();
+        refreshPeaks();
       }
 
       var FALLBACK_PETS = ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat"]
         .map(function (n, i) { return { id: "p" + i, name: n, strip: null }; });
+
+      /* sample data so demo (bridge-less) mode shows the real design */
+      var DEMO_SESSIONS = [
+        { sessionID: "demo-1", state: "busy", title: "Refactor engine", toolLabel: "edit main.py (12 chars)", message: "Rewriting the state machine", direction: "right", cwd: "C:\\proj\\opencode-pet", updatedAt: Date.now() - 4000 },
+        { sessionID: "demo-2", state: "thinking", title: "Debug watcher thread", toolLabel: "", message: "Thread is deadlocking on", direction: "left", cwd: "C:\\proj\\watcher", updatedAt: Date.now() - 12000 },
+        { sessionID: "demo-3", state: "error", title: "Sprite pipeline", toolLabel: "bash", message: "Something went wrong", direction: "right", cwd: "C:\\proj\\sprites", updatedAt: Date.now() - 25000 },
+        { sessionID: "demo-4", state: "celebrating", title: "UI polish", toolLabel: "", message: "Done!", direction: "left", cwd: "C:\\proj\\ui", updatedAt: Date.now() - 3000 },
+        { sessionID: "demo-5", state: "idle", title: "Docs", toolLabel: "", message: "", direction: "left", cwd: "C:\\proj\\docs", updatedAt: Date.now() - 60000 }
+      ];
+      var DEMO_LOGS = [
+        { t: Date.now() / 1000 - 5, kind: "state", state: "busy" },
+        { t: Date.now() / 1000 - 40, kind: "tool", tool: "edit main.py" },
+        { t: Date.now() / 1000 - 90, kind: "active", app: "VS Code" },
+        { t: Date.now() / 1000 - 180, kind: "break", mins: 52 }
+      ];
+      var DEMO_WB = [
+        { app: "VS Code", seconds: 7200 },
+        { app: "Terminal", seconds: 3600 },
+        { app: "Chrome", seconds: 900 }
+      ];
+      var DEMO_WB_HISTORY = (function () {
+        var today = new Date();
+        return [7200, 5400, 3600, 8100, 0, 4500, 3600].map(function (secs, i) {
+          var d = new Date(today.getTime() - (6 - i) * 86400000);
+          return { date: localDate(d), seconds: secs };
+        });
+      })();
+      var DEMO_INSIGHTS = {
+        weekSeconds: 32400, prevWeekSeconds: 25200, deltaPct: 29,
+        bestDay: { date: DEMO_WB_HISTORY[3].date, seconds: 8100 },
+        todaySeconds: 3600, topApp: { app: "VS Code", seconds: 7200 }
+      };
+      var DEMO_FOCUS = { active: false, startedAt: 0, targetMin: 25, wilted: false, app: "", progress: 0 };
+      var DEMO_PROFILE = { level: 7, xp: 64, xpNext: 400, xpPct: 0.16, mood: "happy", streak: 4,
+        stage: { id: "stage2", name: "Growing", emoji: "\ud83c\udf31" } };
+      var DEMO_WRAPPED = {
+        days: 7, weekSeconds: 32400, prevWeekSeconds: 25200,
+        bestDay: { date: DEMO_WB_HISTORY[3].date, seconds: 8100 },
+        topApp: { app: "VS Code", seconds: 11700 }, streak: 4, xp: 640,
+        focusSessions: 9, level: 7
+      };
+      var DEMO_WB_HISTORY_30 = (function () {
+        var today = new Date();
+        var vals = [2400, 5400, 0, 7200, 3600, 8100, 1800, 0, 4500, 6300,
+          3600, 900, 5400, 7200, 0, 3600, 5400, 8100, 2700, 0,
+          6300, 3600, 7200, 4500, 1800, 5400, 0, 7200, 3600, 7200];
+        return vals.map(function (secs, i) {
+          var d = new Date(today.getTime() - (29 - i) * 86400000);
+          return { date: localDate(d), seconds: secs };
+        });
+      })();
+      var DEMO_WEEK_APPS = [
+        { app: "VS Code", seconds: 11700 },
+        { app: "Terminal", seconds: 8100 },
+        { app: "Chrome", seconds: 4500 },
+        { app: "Slack", seconds: 2700 },
+        { app: "Figma", seconds: 1800 }
+      ];
+      var DEMO_WB_HISTORY_90 = (function () {
+        var today = new Date();
+        var out = [];
+        for (var i = 89; i >= 0; i--) {
+          var d = new Date(today.getTime() - i * 86400000);
+          // realistic pattern: workdays strong, weekends light
+          var dow = d.getDay();
+          var secs = (dow === 0 || dow === 6) ? (i % 3 === 0 ? 0 : 1800)
+            : [2700, 5400, 7200, 8100, 3600, 9000, 5400][i % 7];
+          out.push({ date: localDate(d), seconds: secs });
+        }
+        return out;
+      })();
+      var DEMO_PEAKS = (function () {
+        // bell-ish curve peaking at 10 AM with a runner-up at 3 PM
+        var hours = [];
+        for (var h = 0; h < 24; h++) {
+          var s = 0;
+          if (h >= 7 && h <= 18) s = Math.round(4200 * Math.exp(-Math.pow(h - 10, 2) / 8));
+          if (h === 15) s = 2700;
+          if (h === 16) s = 2400;
+          hours.push({ hour: h, seconds: s });
+        }
+        return { days: 7, totalSeconds: 32400, hours: hours,
+          best: { hour: 10, label: "10 AM", seconds: 4200, pct: 30 },
+          runnerUp: { hour: 15, label: "3 PM", seconds: 2700, pct: 19 },
+          spanLabel: "mornings" };
+      })();
 
       document.getElementById("walk").addEventListener("input", function (e) {
         state.walk = +e.target.value;
@@ -1041,8 +3248,166 @@
       setInterval(refreshConfig, 2500);
       setInterval(refreshActivity, 3000);
       setInterval(refreshWellbeing, 5000);
+      setInterval(refreshWellbeingHistory, 15000);
+      setInterval(refreshInsights, 15000);
+      setInterval(refreshFocusSession, 2500);
+      setInterval(refreshProfile, 10000);
+      setInterval(refreshWrapped, 20000);
+      setInterval(refreshSparkline, 30000);
+      setInterval(refreshWeekApps, 20000);
+      setInterval(refreshCompanion, 15000);
+      setInterval(refreshHeatmap, 30000);
+      setInterval(refreshPeaks, 15000);
       load();
     })();
   </script>
+<script>
+/* ============================================================
+   FOCUS RITUAL — additive enhancement (accepted via consensus).
+   Reads the existing focus card's DOM (zero edits to app.js):
+   - sprout maturity phase bar (Seed/Sprout/Leaf/Bloom/Wilt)
+   - cross-app "Focusing in <app>" chip (any app counts)
+   - type-move break ritual on completion (bolt -> cursor ash -> Break!)
+   App-agnostic: uses fs.app from the OS-level foreground detector.
+   ============================================================ */
+(function () {
+  "use strict";
+  var RING_R = 33.5, RING_C = 2 * Math.PI * RING_R;
+  var fired = false;   // break ritual fired during this session
+  var lastSig = "";
+
+  var TYPES = [
+    { m: /pika/i, move: "Thunderbolt", g: "⚡" },
+    { m: /charm/i, move: "Ember", g: "🔥" },
+    { m: /dora/i, move: "Air Cannon", g: "💨" },
+    { m: /gardev/i, move: "Confusion", g: "✨" },
+    { m: /girat/i, move: "Shadow Claw", g: "🌑" },
+    { m: /cat/i, move: "Scratch", g: "🐾" }
+  ];
+  function moveFor(pet) {
+    for (var i = 0; i < TYPES.length; i++) {
+      if (TYPES[i].m.test(pet || "")) return TYPES[i];
+    }
+    return { move: "Focus Burst", g: "✦" };
+  }
+  function phase(pct, wilted) {
+    if (wilted) return { k: "wilt", label: "Wilted", e: "🥀", c: 0 };
+    if (pct >= 100) return { k: "bloom", label: "Bloom", e: "🌸", c: 100 };
+    if (pct >= 67) return { k: "leaf", label: "Leafing", e: "🍃", c: 67 };
+    if (pct >= 34) return { k: "sprout", label: "Sprouting", e: "🌱", c: 34 };
+    return { k: "seed", label: "Seed", e: "🌰", c: 0 };
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function appFrom(statusText) {
+    var m = /Focusing in (.+?) \u00b7/.exec(statusText || "");
+    return m ? m[1] : "";
+  }
+
+  function build() {
+    var el = document.getElementById("focusSession");
+    if (!el) return;
+    var active = !!document.getElementById("fsStop");
+    if (!active) { fired = false; removeRitual(el); return; }
+
+    var ring = el.querySelector(".ring-fg");
+    var sub = el.querySelector(".fsess-sub");
+    var statusText = sub ? sub.textContent : "";
+    var wilted = !!el.querySelector(".ring.wilted");
+    var offset = ring ? parseFloat(ring.getAttribute("stroke-dashoffset")) : RING_C;
+    if (isNaN(offset)) offset = RING_C;
+    var pct = Math.max(0, Math.min(100, Math.round((1 - offset / RING_C) * 100)));
+
+    if (!wilted && pct >= 100) fired = true;
+
+    var pet = ((document.getElementById("railName") || {}).textContent || "").trim() || "Pet";
+    var mv = moveFor(pet);
+    var ph = phase(pct, wilted);
+    var app = appFrom(statusText) || "your app";
+    var showRitual = fired && !wilted;
+
+    var sig = [active, wilted, ph.k, showRitual, app].join("|");
+    if (sig === lastSig) return;
+    lastSig = sig;
+    removeRitual(el);
+
+    var r = document.createElement("div");
+    r.className = "focus-ritual" + (wilted ? " wilt" : (showRitual ? " fire" : ""));
+    var body = "";
+    if (showRitual) {
+      body =
+        '<div class="fr-ritual" role="img" aria-label="' + esc(mv.move) + ' \u2014 time to break">' +
+          '<div class="fr-bolt">' + mv.g + "</div>" +
+          '<svg class="fr-arc" viewBox="0 0 120 60" aria-hidden="true"><path d="M6 50 C 40 8, 80 8, 114 44"/></svg>' +
+          '<div class="fr-cursor" aria-hidden="true">\ud83d\uddb1</div>' +
+          '<div class="fr-ash" aria-hidden="true"><span>&bull;</span><span>&bull;</span><span>&bull;</span></div>' +
+        "</div>" +
+        '<div class="fr-break">Break! <b>' + esc(mv.move) + "</b> &middot; <span>rest your eyes</span></div>";
+    } else if (wilted) {
+      body = '<div class="fr-wilt">Switch back soon to save the sprout</div>';
+    } else {
+      body = '<div class="fr-move">' + mv.g + ' <b>' + esc(mv.move) + "</b> ready for your next break</div>";
+    }
+
+    r.innerHTML =
+      '<div class="fr-top">' +
+        '<span class="fr-appchip" title="Focus is app-agnostic \u2014 any app counts">' +
+          '<span class="fr-appdot"></span> Focusing in <b>' + esc(app) + "</b></span>" +
+        '<span class="fr-phase ' + ph.k + '">' + ph.e + " " + ph.label + "</span>" +
+      "</div>" +
+      '<div class="fr-phasebar" aria-hidden="true"><span style="width:' + ph.c + '%"></span></div>' +
+      body;
+    el.appendChild(r);
+  }
+
+  function removeRitual() {
+    var el = document.getElementById("focusSession");
+    if (!el) return;
+    var old = el.querySelector(".focus-ritual");
+    if (old) old.remove();
+  }
+
+  // Smooth live progress ring — fixes the "sluggish" stepped clock. A rAF loop
+  // drives the ring + remaining time from wall-clock between polls (from the
+  // data-started/data-target we stamped on the .fsess root), so it never waits
+  // on a poll and never re-renders the card.
+  var _raf = null;
+  function _drive() {
+    var fs = document.querySelector("#focusSession .fsess");
+    var v = document.getElementById("view-focus");
+    var active = !!fs && fs.getAttribute("data-active") === "1" && v && !v.hidden;
+    if (!fs || !active) { _raf = null; return; }
+    var fg = fs.querySelector(".ring-fg");
+    var remain = fs.querySelector(".fs-remain");
+    if (fg) {
+      var started = parseFloat(fs.getAttribute("data-started")) || Date.now();
+      var targetSec = parseFloat(fs.getAttribute("data-target")) || 0;
+      var C = parseFloat(fg.getAttribute("stroke-dasharray")) || (2 * Math.PI * RING_R);
+      var elapsed = (Date.now() - started) / 1000;
+      var prog = targetSec > 0 ? Math.min(1, Math.max(0, elapsed / targetSec)) : 0;
+      fg.style.transition = "none";           // direct, frame-accurate updates
+      fg.setAttribute("stroke-dashoffset", (C * (1 - prog)).toFixed(1));
+      if (remain) {
+        var left = Math.max(0, targetSec - elapsed);
+        remain.textContent = "\u00b7 " + Math.ceil(left / 60) + "m left";
+      }
+    }
+    _raf = requestAnimationFrame(_drive);
+  }
+  function _kick() { if (_raf == null) _raf = requestAnimationFrame(_drive); }
+
+  // keep in sync while the Focus view is visible
+  setInterval(function () {
+    var v = document.getElementById("view-focus");
+    if (!v || v.hidden) return;
+    build();
+    _kick();
+  }, 900);
+})();
+
+</script>
 </body>
 </html>
