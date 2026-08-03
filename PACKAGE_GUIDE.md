@@ -1,39 +1,16 @@
 # Release Package Contents
 
-When you create a release, GitHub Actions automatically builds and packages the application.
+When you create a release, GitHub Actions automatically builds the application.
 
 ## What Gets Downloaded
 
-Users will see **2 files** in the release:
+Users will see **1 file** in the release:
 
-### 1. `OpenCodePet.exe` (Standalone Executable)
+### `OpenCodePet.exe` (Standalone Executable)
 - **Size**: ~50 MB
 - **What it is**: The complete desktop application in a single file
 - **How to use**: Just double-click it - no installation needed!
-- **Best for**: Users who just want the app
-
-### 2. `OpenCodePet-v0.6.1-windows.zip` (Recommended Download)
-- **Size**: ~50 MB (same exe + ~10 KB docs)
-- **What it is**: ZIP package containing:
-  ```
-  OpenCodePet-v0.6.1-windows/
-  ├── OpenCodePet.exe      # The application
-  ├── README.txt           # Quick start guide
-  ├── RELEASES.txt         # Release notes
-  └── LICENSE.txt          # MIT License
-  ```
-- **How to use**: 
-  1. Download and extract the ZIP
-  2. Double-click `OpenCodePet.exe`
-  3. Read README.txt for instructions
-- **Best for**: All users (recommended)
-
-## Which Should Users Download?
-
-**Recommend the ZIP package** because it includes:
-- Quick start instructions
-- License information
-- Release notes
+- **Best for**: All users
 
 ## Example Release Page
 
@@ -44,12 +21,15 @@ When you visit https://github.com/iAMv1/opencode-pet/releases/tag/v0.6.1, users 
 
 ### Desktop Application
 
-**Download `OpenCodePet-v0.6.1-windows.zip` below** - no installation required!
+**Download `OpenCodePet.exe` below** - no installation required, just run it!
+
+#### Requirements
+- Windows 10/11
 
 #### Installation
-1. Download the ZIP file
-2. Extract it
-3. Double-click OpenCodePet.exe
+1. Download `OpenCodePet.exe`
+2. Double-click to run
+3. The pet will appear on your desktop
 
 #### What's Changed
 - Bug fixes
@@ -61,12 +41,11 @@ When you visit https://github.com/iAMv1/opencode-pet/releases/tag/v0.6.1, users 
 
 ### Assets
 - [OpenCodePet.exe](link) - Standalone executable
-- [OpenCodePet-v0.6.1-windows.zip](link) - **Recommended** - ZIP package with docs
 ```
 
 ## Creating a Release
 
-To create a new release with these packages:
+To create a new release:
 
 ```bash
 # 1. Make sure all changes are committed
@@ -80,31 +59,30 @@ git push origin v0.6.1
 ```
 
 GitHub Actions will automatically:
-1. Build the EXE (~5 minutes)
-2. Create the ZIP package
-3. Create the GitHub Release
-4. Attach both files
+1. Build `OpenCodePet.exe` on Windows
+2. Create a GitHub Release
+3. Attach the executable
+4. Generate release notes
 
 ## Direct Download Links
 
-You can share these direct links:
+You can share this direct link with others:
 
 **Latest version (always points to newest):**
 ```
-https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet-v0.6.1-windows.zip
+https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet.exe
 ```
 
 **Specific version:**
 ```
-https://github.com/iAMv1/opencode-pet/releases/download/v0.6.1/OpenCodePet-v0.6.1-windows.zip
+https://github.com/iAMv1/opencode-pet/releases/download/v0.6.1/OpenCodePet.exe
 ```
 
 ## Current Status
 
 ✅ **v0.6.0 tag exists** - ready to build
-✅ **GitHub Actions workflow configured** - will build both EXE and ZIP
+✅ **GitHub Actions workflow configured** - will build and release the EXE
 ✅ **LICENSE file created** - MIT License
-✅ **Documentation ready** - README.txt, RELEASES.txt, LICENSE.txt
 
 ## Next Steps
 
@@ -120,31 +98,14 @@ https://github.com/iAMv1/opencode-pet/releases/download/v0.6.1/OpenCodePet-v0.6.
 
 4. **Share the download link**:
    ```
-   https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet-v0.6.0-windows.zip
+   https://github.com/iAMv1/opencode-pet/releases/latest/download/OpenCodePet.exe
    ```
-
-## Package Comparison
-
-| Feature | EXE Only | ZIP Package (Recommended) |
-|---------|----------|---------------------------|
-| Size | ~50 MB | ~50 MB |
-| Installation | None | Extract and run |
-| Documentation | ❌ No | ✅ Yes (README.txt) |
-| License | ❌ No | ✅ Yes (LICENSE.txt) |
-| Release Notes | GitHub only | ✅ Included (RELEASES.txt) |
-| User Experience | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 
 ## Files in This Release
 
 ```
 Release v0.6.0/
-├── OpenCodePet.exe                          # Standalone executable
-└── OpenCodePet-v0.6.0-windows.zip           # Complete package
-    └── OpenCodePet-v0.6.0-windows/
-        ├── OpenCodePet.exe                  # The application
-        ├── README.txt                       # Quick start guide
-        ├── RELEASES.txt                     # Release notes
-        └── LICENSE.txt                      # MIT License
+└── OpenCodePet.exe    # Standalone executable (~50 MB)
 ```
 
 ---
