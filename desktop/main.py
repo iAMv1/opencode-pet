@@ -1187,14 +1187,14 @@ class PetEngine:
     }
 
     def _state_aura(self):
-        """Compact, glanceable status halo under the pet: colour = what your AI
-        tools / terminal are doing. Small, clean, softly pulsing — reads at a
-        glance without competing with the sprite."""
+        """Small status dot in the top-right corner: colour = what your AI
+        tools / terminal are doing. Soft pulse, no big background circle."""
         try:
             st = self._state()
             col = self.STATE_COLORS.get(st, (96, 96, 116))
-            w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
-            h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
+            r = 6
+            w = r * 2 + 4
+            h = r * 2 + 4
             if getattr(self, "_sa_cache", None) is None:
                 self._sa_cache = {}
             key = (col[0], col[1], col[2], w, h)
@@ -1202,12 +1202,10 @@ class PetEngine:
             if glow is None:
                 glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
                 dr = ImageDraw.Draw(glow)
-                cx, cy = w // 2, int(h * 0.74)
-                r = max(5, int(min(w, h) * 0.30))
                 for rr in range(r, 0, -2):
-                    a = int(120 * (1 - rr / r) ** 2)
+                    a = int(160 * (1 - rr / r) ** 2)
                     if a > 0:
-                        dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                        dr.ellipse((2 + r - rr, 2 + r - rr, 2 + r + rr, 2 + r + rr),
                                    fill=(col[0], col[1], col[2], a))
                 self._sa_cache[key] = glow
             now = time.time()
@@ -1221,12 +1219,9 @@ class PetEngine:
                 p = 0.5 + 0.5 * math.sin(now * 1.1)
             out = glow.copy()
             dr = ImageDraw.Draw(out)
-            cx, cy = w // 2, int(h * 0.74)
-            r = max(5, int(min(w, h) * 0.30))
-            lw = 2 if live else (3 if alarm else 1)
             ra = min(255, int((110 if alarm else 70) + (80 if alarm else 55) * p))
-            dr.ellipse((cx - r, cy - r, cx + r, cy + r),
-                       outline=(col[0], col[1], col[2], ra), width=lw)
+            dr.ellipse((2, 2, 2 + r * 2, 2 + r * 2),
+                       outline=(col[0], col[1], col[2], ra), width=2)
             return out
         except Exception:
             return None
