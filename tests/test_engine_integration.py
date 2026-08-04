@@ -61,8 +61,9 @@ class TestDefinitions:
                 assert s["row"] < rows, "%s state %s row OOB" % (pet["file"], s["id"])
                 assert s["frames"] <= cols, "%s state %s cols OOB" % (pet["file"], s["id"])
 
-    def test_six_pets_declared(self):
-        assert len(main.PETS) == 6
+    def test_pets_declared(self):
+        assert len(main.PETS) == 7
+        assert main.PETS[-1]["id"] == "emberkit"
 
 
 # ---------------------------------------------------------------- full engine

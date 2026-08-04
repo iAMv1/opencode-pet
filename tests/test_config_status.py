@@ -252,7 +252,8 @@ class TestControlApi:
     def _api(self, pet_dir):
         return main.ControlApi()
 
-    def test_get_config_shape(self, pet_dir):
+    def test_get_config_shape(self, pet_dir, monkeypatch):
+        monkeypatch.setattr(main, "current_app_session", lambda: None)
         c = self._api(pet_dir).get_config()
         assert c["petIdx"] == 0
         assert c["pets"] == [p["name"] for p in main.PETS]
@@ -267,7 +268,8 @@ class TestControlApi:
         c = self._api(pet_dir).get_config()
         assert c["state"] == "busy"
 
-    def test_get_config_stale_session_is_idle(self, pet_dir):
+    def test_get_config_stale_session_is_idle(self, pet_dir, monkeypatch):
+        monkeypatch.setattr(main, "current_app_session", lambda: None)
         write(pet_dir, "status-a.json",
               {"sessionID": "a", "state": "busy",
                "updatedAt": int(time.time() * 1000) - 120000})
@@ -314,8 +316,8 @@ class TestControlApi:
         api = self._api(pet_dir)
         api.next_pet()
         assert main.load_config()["petIdx"] == 1
-        # from 1, 5 more nexts wraps to 0
-        for _ in range(5):
+        # from 1, 6 more nexts wraps to 0
+        for _ in range(6):
             api.next_pet()
         assert main.load_config()["petIdx"] == 0
         api.prev_pet()

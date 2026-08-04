@@ -173,7 +173,7 @@ SELFTEST = r"""<script>
     // 7. pets & behavior view
     click('.nav-item[data-view="pets"]');
     check("pets view visible", !document.getElementById("view-pets").hidden);
-    check("6 pet cards", has(".pet-card") === 6, String(has(".pet-card")));
+    check("7 pet cards", has(".pet-card") === 7, String(has(".pet-card")));
     var selected = document.querySelector('.pet-card[aria-checked="true"]');
     check("pet 2 selected (Charmander)", selected && selected.textContent.indexOf("Charmander") >= 0,
       selected ? selected.textContent : "");

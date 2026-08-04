@@ -739,6 +739,23 @@ def read_status():
     return out
 
 
+def current_app_session():
+    """Expose active desktop work when no tool-specific status file exists."""
+    app = foreground_app()
+    if not app or app in ("Explorer", "Program Manager") or last_input_ms() >= ACTIVE_MS:
+        return None
+    now_ms = int(time.time() * 1000)
+    return {
+        "sessionID": "desktop-activity",
+        "state": "busy",
+        "title": app + " activity",
+        "toolLabel": app,
+        "message": "Active desktop work",
+        "updatedAt": now_ms,
+        "direction": "right",
+    }
+
+
 def read_dir_changes(path):
     handle = kernel32.CreateFileW(
         path, 1, 1 | 2 | 4, None, 3, 0x02000000, None)
@@ -1884,7 +1901,7 @@ class ControlApi:
         c["petVisible"] = bool(c.get("petVisible", True))
         c["petName"] = PETS[c.get("petIdx", 0) % len(PETS)]["name"]
         sess = read_status()
-        c["state"] = (sess[0].get("state") or "idle") if sess and not sess[0].get("stale") else "idle"
+        c["state"] = (sess[0].get("state") or "idle") if sess and not sess[0].get("stale") else ("busy" if current_app_session() else "idle")
         return c
 
     def get_previews(self):
@@ -1901,6 +1918,10 @@ class ControlApi:
                 continue
             if (s.get("state") or "idle") in ("busy", "thinking", "error", "retry", "celebrating"):
                 out.append(s)
+        if not out:
+            activity = current_app_session()
+            if activity:
+                out.append(activity)
         return out
 
     def get_logs(self, limit=200):
@@ -2648,6 +2669,11 @@ def main():
     engine.win.show()
     engine._prune_status()  # clear stale session files from previous runs
 
+    # Load sessions that were already running BEFORE the app started. The
+    # watcher below only fires on file CHANGES, so pre-existing status files
+    # would otherwise never reach the engine.
+    engine.update_sessions(read_status())
+
     create_tray(engine)
 
     # Launching the app should open the control window too, not just the pet.
@@ -2663,6 +2689,7 @@ def main():
     def watcher():
         last_prune = 0.0
         poll_interval = 2.0  # fallback when file watch is broken
+        last_poll = 0.0
         while not engine._shutdown:
             try:
                 engine._watch_failures = 0
@@ -2675,20 +2702,24 @@ def main():
                     if time.time() - last_prune >= 30:
                         last_prune = time.time()
                         engine._prune_status()
+                    last_poll = time.time()
             except Exception:
                 engine._watch_failures += 1
                 if engine._watch_failures == 1:
                     import traceback
                     traceback.print_exc()
-            # Fallback: poll for changes even if file watch is broken
+            # Periodic refresh so sessions that appear (or stale) without a
+            # directory-change event still reach the engine.
+            if time.time() - last_poll >= poll_interval:
+                engine.update_sessions(read_status())
+                engine.config_watch()
+                if time.time() - last_prune >= 30:
+                    last_prune = time.time()
+                    engine._prune_status()
+                last_poll = time.time()
             time.sleep(poll_interval)
             if engine._shutdown:
                 return
-            engine.update_sessions(read_status())
-            engine.config_watch()
-            if time.time() - last_prune >= 30:
-                last_prune = time.time()
-                engine._prune_status()
 
     threading.Thread(target=watcher, daemon=True).start()
 

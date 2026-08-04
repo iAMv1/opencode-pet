@@ -8,6 +8,8 @@
 import argparse
 import os
 
+from collections import deque
+
 from PIL import Image
 
 FRAME_W, FRAME_H = 192, 208
@@ -17,17 +19,35 @@ BLACK_TOL = 42
 
 
 def black_key(im, tol=BLACK_TOL):
-    """Pure-black background -> alpha. Sprite pixels are brighter than bg."""
+    """Remove only border-connected black background; preserve black outlines."""
     rgba = im.convert("RGBA")
     px = rgba.load()
     w, h = rgba.size
+    queue = deque()
+    seen = set()
+
+    def is_background(x, y):
+        r, g, b, a = px[x, y]
+        return a and r < tol and g < tol and b < tol
+
+    for x in range(w):
+        for y in (0, h - 1):
+            if is_background(x, y):
+                queue.append((x, y))
     for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            if a == 0:
-                continue
-            if r < tol and g < tol and b < tol:
-                px[x, y] = (0, 0, 0, 0)
+        for x in (0, w - 1):
+            if is_background(x, y):
+                queue.append((x, y))
+
+    while queue:
+        x, y = queue.popleft()
+        if (x, y) in seen or not is_background(x, y):
+            continue
+        seen.add((x, y))
+        px[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in seen:
+                queue.append((nx, ny))
     return rgba
 
 
@@ -39,8 +59,6 @@ def fit_cell(cell, tw=FRAME_W, th=FRAME_H, pad=10, bottom=8):
     cropped = cell.crop(bbox)
     bw, bh = cropped.size
     scale = min((tw - 2 * pad) / bw, (th - 2 * pad - bottom) / bh)
-    if scale > 1:
-        scale = 1
     nw, nh = max(1, int(bw * scale)), max(1, int(bh * scale))
     resized = cropped.resize((nw, nh), Image.NEAREST)
     out.paste(resized, ((tw - nw) // 2, th - nh - bottom), resized)

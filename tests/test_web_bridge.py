@@ -95,7 +95,7 @@ def test_get_config_from_real_file(server):
     assert c["breakMin"] == 50
     assert c["petName"] == "Charmander"          # PETS[1]
     assert c["pets"] == ["Pikachu", "Charmander", "Doraemon", "Gardevoir",
-                         "Giratina", "LPC Cat"]
+                         "Giratina", "LPC Cat", "Emberkit"]
     assert c["state"] == "busy"                  # top fresh session
 
 
@@ -296,9 +296,9 @@ def test_next_prev_pet_real(fresh_server):
 def test_previews_real(server):
     base, _ = server
     prevs = wb.rpc(base, "get_previews")
-    assert len(prevs) == 6
+    assert len(prevs) == 7
     ids = [p["id"] for p in prevs]
-    assert ids == ["capvolt", "charmander", "doraemon", "gardevoir", "giratina", "lpc-cat"]
+    assert ids == ["capvolt", "charmander", "doraemon", "gardevoir", "giratina", "lpc-cat", "emberkit"]
     # real sprite strips are base64 PNG data URIs
     assert all(p["strip"] and p["strip"].startswith("data:image/png;base64,") for p in prevs)
 
@@ -364,7 +364,8 @@ def test_empty_dir(fresh_server):
     base, d = fresh_server
     for f in os.listdir(d):
         os.unlink(os.path.join(d, f))
-    assert wb.rpc(base, "get_sessions") == []
+    sessions = wb.rpc(base, "get_sessions")
+    assert all(s["sessionID"] == "desktop-activity" for s in sessions)
     c = wb.rpc(base, "get_config")
     assert c["petIdx"] == 0
 

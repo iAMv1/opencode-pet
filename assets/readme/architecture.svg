@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
   <title id="title">OpenCode Pet - architecture</title>
-  <desc id="desc">How OpenCode Pet works: activity sources feed a pet engine that drives physics, animation and the GDI transparent window at 30 frames per second.</desc>
+  <desc id="desc">How OpenCode Pet works: tool sessions and desktop activity feed a pet engine that drives physics, animation and the GDI transparent window at 30 frames per second.</desc>
 
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
@@ -22,8 +22,8 @@
 
   <g id="sources" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
     <rect x="80" y="150" width="240" height="86" rx="14" fill="#141319" stroke="#23222b"/>
-    <text x="200" y="178" fill="#f2f1ec" font-size="20" text-anchor="middle">OpenCode</text>
-    <text x="200" y="206" fill="#aaa8b3" font-size="17" text-anchor="middle">sessions</text>
+    <text x="200" y="178" fill="#f2f1ec" font-size="20" text-anchor="middle">Tool sessions</text>
+    <text x="200" y="206" fill="#aaa8b3" font-size="17" text-anchor="middle">any terminal or IDE</text>
 
     <rect x="80" y="272" width="240" height="86" rx="14" fill="#141319" stroke="#23222b"/>
     <text x="200" y="300" fill="#f2f1ec" font-size="20" text-anchor="middle">OS activity</text>

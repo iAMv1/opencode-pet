@@ -49,10 +49,21 @@ A non-intrusive pet that reacts to real events - no polling loop. It reads OpenC
 
 ## Pet states
 
-The pet reacts to your activity in real time.
+The pet mirrors the state of your sessions — whatever your terminal and tools are doing right now.
+
+| Session state | Pet does |
+|---------------|----------|
+| 🏃 Working | Jogs while your tools run, think, or review |
+| 🤔 Review | Review pose while processing |
+| ❌ Error | Sad pose + a reaction line |
+| ✅ Success | Jump celebration, earns XP |
+| 💤 Idle | Calm breathing |
+| ⏳ Waiting | Waiting gait when sessions go idle |
+| 🔁 Retry | Review pose while retrying |
+| 🎉 Celebrating | Wave + jump on focus completion |
 
 <p align="center">
-  <img src="./assets/readme/states.svg" width="100%" alt="The seven pet states: idle, running, thinking, success, failed, celebrate and wilt, each with its trigger and animation">
+  <img src="./assets/readme/states.svg" width="100%" alt="Pet states wired to session state: working, review, error, success, idle, waiting, retry and celebrating">
 </p>
 
 ---
@@ -60,7 +71,7 @@ The pet reacts to your activity in real time.
 ## How it works
 
 <p align="center">
-  <img src="./assets/readme/architecture.svg" width="100%" alt="Event-driven architecture: OpenCode sessions and OS activity feed the pet engine, which drives a transparent GDI window at 30 frames per second">
+  <img src="./assets/readme/architecture.svg" width="100%" alt="Event-driven architecture: tool sessions and OS activity feed the pet engine, which drives a transparent GDI window at 30 frames per second">
 </p>
 
 ### Interactions

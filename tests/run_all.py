@@ -56,8 +56,8 @@ def main():
             r = subprocess.run(
                 [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
                  "--user-data-dir=" + profile,
-                 "--virtual-time-budget=15000", "--dump-dom", fixture],
-                capture_output=True, text=True)
+                  "--virtual-time-budget=15000", "--dump-dom", fixture],
+                 capture_output=True, text=True, encoding="utf-8", errors="replace")
             import re
             m = re.search(r"TOTAL (\d+)/(\d+)", r.stdout)
             if m:

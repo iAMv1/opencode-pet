@@ -50,7 +50,7 @@ MOCK = r"""<script>
       get_config: function () {
         return Promise.resolve({
           petIdx: 1, walk: 70, alwaysOnTop: true, petVisible: true, breakMin: 50,
-          pets: ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat"],
+          pets: ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat", "Emberkit"],
           petName: "Charmander", state: "busy"
         });
       },
@@ -61,7 +61,8 @@ MOCK = r"""<script>
           { id: "doraemon", name: "Doraemon", strip: null, frames: 6, durationMs: 1100, frameW: 80, frameH: 80 },
           { id: "gardevoir", name: "Gardevoir", strip: null, frames: 6, durationMs: 1100, frameW: 80, frameH: 80 },
           { id: "giratina", name: "Giratina", strip: null, frames: 6, durationMs: 1100, frameW: 80, frameH: 80 },
-          { id: "lpc-cat", name: "LPC Cat", strip: null, frames: 8, durationMs: 1100, frameW: 80, frameH: 80 }
+          { id: "lpc-cat", name: "LPC Cat", strip: null, frames: 8, durationMs: 1100, frameW: 80, frameH: 80 },
+          { id: "emberkit", name: "Emberkit", strip: null, frames: 6, durationMs: 1100, frameW: 73, frameH: 80 }
         ]);
       },
       get_sessions: function () {
