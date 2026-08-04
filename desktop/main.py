@@ -1406,16 +1406,11 @@ class PetEngine:
         w = self.pet["frameW"] * self.pet["scale"]
         h = self.pet["frameH"] * self.pet["scale"]
         canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        # evolution aura: a soft stage-coloured glow under the pet. Programmatic
-        # for launch (no art needed); per-stage sheets can replace it later.
-        aura = self._stage_aura()
-        if aura:
-            canvas.alpha_composite(aura, (0, int(h * 0.10)))
-        # status ring: the circle behind the pet becomes a glanceable notifier for
-        # what your AI tools / terminal are doing (colour + gentle pulse).
+        # status dot: small glanceable indicator in the top-right corner.
+        # Colour = what your AI tools / terminal are doing.
         saura = self._state_aura()
         if saura:
-            canvas.alpha_composite(saura, (0, int(h * 0.10)))
+            canvas.alpha_composite(saura, (w - saura.width, 0))
         if self.sheet:
             st = pet_states(self.pet)
             anim = next((a for a in st if a["id"] == self._anim_id()), st[0])
