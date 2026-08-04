@@ -254,16 +254,17 @@ PETS = [
     {"id": "doraemon", "name": "Doraemon", "file": "pet-doraemon.webp", "frameW": 192, "frameH": 208, "scale": 1, "map": DEFAULT_MAP},
     {"id": "gardevoir", "name": "Gardevoir", "file": "pet-gardevoir.webp", "frameW": 192, "frameH": 208, "scale": 1, "map": DEFAULT_MAP},
     {"id": "giratina", "name": "Giratina", "file": "pet-giratina.webp", "frameW": 192, "frameH": 208, "scale": 1, "map": DEFAULT_MAP},
-    {"id": "lpc-cat", "name": "LPC Cat", "file": "pet-lpc-cat.png", "frameW": 64, "frameH": 64, "scale": 3,
-     "states": [
-         {"id": "idle", "row": 0, "frames": 8, "durationMs": 1100},
-         {"id": "running-right", "row": 1, "frames": 8, "durationMs": 900},
-         {"id": "running-left", "row": 2, "frames": 8, "durationMs": 900},
-         {"id": "waiting", "row": 0, "frames": 8, "durationMs": 1500},
-     ],
-     "map": {"idle": "idle", "busy": "running-right", "thinking": "idle", "error": "idle",
-             "success": "idle", "celebrating": "idle", "stale": "waiting", "waiting": "waiting"}},
-]
+     {"id": "lpc-cat", "name": "LPC Cat", "file": "pet-lpc-cat.png", "frameW": 64, "frameH": 64, "scale": 3,
+      "states": [
+          {"id": "idle", "row": 0, "frames": 8, "durationMs": 1100},
+          {"id": "running-right", "row": 1, "frames": 8, "durationMs": 900},
+          {"id": "running-left", "row": 2, "frames": 8, "durationMs": 900},
+          {"id": "waiting", "row": 0, "frames": 8, "durationMs": 1500},
+      ],
+      "map": {"idle": "idle", "busy": "running-right", "thinking": "idle", "error": "idle",
+              "success": "idle", "celebrating": "idle", "stale": "waiting", "waiting": "waiting"}},
+     {"id": "emberkit", "name": "Emberkit", "file": "pet-emberkit.webp", "frameW": 192, "frameH": 208, "scale": 1, "map": DEFAULT_MAP},
+ ]
 
 
 def pet_states(pet):
