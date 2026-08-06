@@ -28,7 +28,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r desktop/requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pytest
+
+      - name: Run tests
+        run: |
+          python -m pytest tests -q
 
       - name: Build executable with PyInstaller
         run: |

@@ -191,6 +191,7 @@ class PetEngine:
         self._last_content = None
         self._last_pos = None
         self._last_log = 0.0
+        self._prune_checked = ""   # P10: activity-log prune runs once per day
         self._prev_state = "_start"
         self._prev_tool = ""
         self._last_active_min = 0.0
@@ -305,6 +306,13 @@ class PetEngine:
             log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"])
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
+            # P10: cap the log (size/age). At most once per day, in-process and
+            # across restarts (the prune persists its date into config); a prune
+            # failure must never break the append above.
+            today = time.strftime("%Y-%m-%d")
+            if today != self._prune_checked:
+                self._prune_checked = today
+                store.prune_activity_log(self.pet["id"], self.cfg)
         except Exception:
             pass
 

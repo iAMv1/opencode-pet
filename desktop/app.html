@@ -2529,7 +2529,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         var tagsRow = active
           ? '<div class="fsess-tags" role="group" aria-label="Session tag">' +
             '<span class="fsess-tags-lab">Tag:</span>' + tagChips +
-            '<input id="fsTagIn" maxlength="40" placeholder="custom\u2026" aria-label="Custom session tag" value="' + esc(curTag) + '">' +
+            '<input id="fsTagIn" maxlength="32" placeholder="custom\u2026" aria-label="Custom session tag" value="' + esc(curTag) + '">' +
             '<button class="btn fsess-btn tagset" id="fsTagSet" type="button">Set</button></div>'
           : "";
         var offset = active ? RING_C * (1 - prog) : RING_C;

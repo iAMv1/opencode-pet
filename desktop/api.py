@@ -32,6 +32,67 @@ _WEB_METHODS = [
 # the command (like ControlApi.quit does) but never os._exit(0) the SERVER.
 _WEB_NOP = frozenset(["hide_control"])
 
+# ---------------------------------------------------------------- input validation (P10)
+# Config keys the app itself int()s when reading (goal_minutes & friends).
+# save_config coerces these with a safe int; anything unparseable is dropped.
+_INT_CONFIG_KEYS = frozenset({
+    "goalMin", "breakMin", "stretchMin", "pomoMin", "pomoShort", "pomoLong",
+    "pomoCount", "memoryMin", "memoryMax", "memoryCount", "walk",
+    "barterBank", "barterStage", "petIdx", "xp", "level",
+})
+
+
+def _is_primitive(v):
+    """JSON-primitive check: str/int/float/bool/None (bool before int — Python
+    bools are ints)."""
+    return v is None or isinstance(v, str) or isinstance(v, bool) \
+        or isinstance(v, (int, float))
+
+
+def _sanitize_config(conf):
+    """Keep only JSON primitives from a JS-supplied config merge.
+
+    The plugin ecosystem writes custom keys (eventMap etc.), so unknown keys
+    are KEPT — but lists are dropped and dicts only survive when every value
+    is a primitive (no nested lists/dicts). Known numeric keys are coerced
+    with a safe int; unparseable values drop the key instead of corrupting a
+    reader that int()s it.
+    """
+    if not isinstance(conf, dict):
+        return {}
+    out = {}
+    for k, v in conf.items():
+        if not isinstance(k, str):
+            continue
+        if _is_primitive(v):
+            out[k] = v
+        elif isinstance(v, dict) and all(_is_primitive(x) for x in v.values()):
+            out[k] = dict(v)
+    for k in _INT_CONFIG_KEYS & set(out):
+        try:
+            out[k] = int(out[k])
+        except (TypeError, ValueError):
+            del out[k]
+    return out
+
+
+def _safe_int(v, default):
+    """int() that never raises — JS-supplied args fall back to the default
+    instead of 500ing the RPC bridge."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pet_idx(cfg):
+    """Safe pet index from config: any garbage petIdx resolves to 0 instead
+    of blowing up the next_pet/prev_pet int math."""
+    try:
+        return int(cfg.get("petIdx", 0) or 0) % len(sprites.PETS)
+    except (TypeError, ValueError):
+        return 0
+
 
 def _current_app_session():
     """Resolve current_app_session through the desktop.main namespace: the
@@ -85,6 +146,7 @@ class ControlApi:
         """Recent activity history for the CURRENT pet (one pet, one memory)."""
         pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
         log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id)
+        limit = max(1, min(_safe_int(limit, 200), 2000))
         try:
             with open(log_path, "r", encoding="utf-8") as fh:
                 lines = fh.readlines()
@@ -126,7 +188,7 @@ class ControlApi:
         # empty state from the totals, not from list length.
         history = d.get("history") if (d and isinstance(d.get("history"), dict)) else {}
         history = store._fold_today(history, d)
-        days = int(days) if days is not None else 7  # 0 => 1 via the clamp below
+        days = _safe_int(days, 7)  # 0 => 1 via the clamp below
         # 90-day window is used by the focus-calendar heatmap; 30 would
         # silently truncate it. The list itself stays bounded.
         days = max(1, min(days, store.HISTORY_MAX_DAYS))
@@ -247,7 +309,7 @@ class ControlApi:
           spanLabel       : "mornings" / "afternoons" / "evenings" / "nights"
                             for the best hour, for a friendlier UI line
         """
-        days = int(days) if days is not None else 7  # 0 => 1 via the clamp below
+        days = _safe_int(days, 7)  # 0 => 1 via the clamp below
         days = max(1, min(days, store.PEAKS_MAX_DAYS))
         d = store.read_wellbeing()
         buckets = store.hour_buckets(d, days)
@@ -302,8 +364,11 @@ class ControlApi:
 
     def set_focus_tag(self, tag=""):
         """Tag the CURRENT focus session (Work/Study/Write/...). Applies until
-        the session ends; a new session starts untagged."""
-        tag = (tag or "").strip()[:40]
+        the session ends; a new session starts untagged. Type-validated: only
+        strings are accepted (P10), stripped and capped at 32 chars."""
+        if not isinstance(tag, str):
+            return False
+        tag = tag.strip()[:32]
         self.tag = tag
         try:
             with open(store.FOCUS_FILE, encoding="utf-8") as fh:
@@ -319,7 +384,8 @@ class ControlApi:
 
     def start_focus(self, minutes=None):
         """Write the one-shot command; the pet process owns the session."""
-        self._cmd("focusStart", int(minutes) if minutes else engine.FOCUS_DEFAULT_MIN)
+        minutes = _safe_int(minutes, engine.FOCUS_DEFAULT_MIN) if minutes is not None else None
+        self._cmd("focusStart", minutes or engine.FOCUS_DEFAULT_MIN)
         return True
 
     def stop_focus(self):
@@ -427,7 +493,7 @@ class ControlApi:
                             "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
                         out["today"] = entry["line"]
                     out["last"].append(entry)
-            out["last"] = out["last"][-int(limit):]
+            out["last"] = out["last"][-_safe_int(limit, 3):]
         except Exception:
             pass
         return out
@@ -627,7 +693,7 @@ class ControlApi:
 
     def get_week_apps(self, days=7):
         """Per-app totals for the last N days (ascending; today folded in)."""
-        days = max(1, min(int(days) if days else 7, 30))
+        days = max(1, min(_safe_int(days, 7), 30))
         out = {}
         d = store.read_wellbeing()
         today = datetime.date.today()
@@ -649,19 +715,19 @@ class ControlApi:
 
     def next_pet(self):
         c = store.load_config()
-        c["petIdx"] = (int(c.get("petIdx", 0)) + 1) % len(sprites.PETS)
+        c["petIdx"] = (_pet_idx(c) + 1) % len(sprites.PETS)
         store.save_config(c)
         return True
 
     def prev_pet(self):
         c = store.load_config()
-        c["petIdx"] = (int(c.get("petIdx", 0)) - 1) % len(sprites.PETS)
+        c["petIdx"] = (_pet_idx(c) - 1) % len(sprites.PETS)
         store.save_config(c)
         return True
 
     def save_config(self, conf):
         c = store.load_config()
-        c.update(conf)  # merge — never drop petVisible or pending commands
+        c.update(_sanitize_config(conf))  # merge — never drop petVisible or pending commands
         store.save_config(c)
         return True
 

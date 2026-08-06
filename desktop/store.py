@@ -37,6 +37,14 @@ HISTORY_MAX_DAYS = 90            # get_wellbeing_history clamp (heatmap)
 PEAKS_MAX_DAYS = 30              # get_focus_peaks clamp
 WEEK_SECS = 7 * 86400            # focus-session count window
 
+# ---------------------------------------------------------------- activity log (P10)
+# activity-<petid>.jsonl appends forever; cap it on size AND age so a month of
+# events (well beyond any dashboard window) can't grow the file unboundedly.
+ACTIVITY_MAX_BYTES = 512 * 1024   # prune once the file passes this
+ACTIVITY_PRUNE_LINES = 2000       # keep the newest N lines on a prune
+ACTIVITY_PRUNE_DAYS = 30          # events older than this are dropped
+ACTIVITY_PRUNE_KEY = "pruneDate"  # config guard: at most one prune per day
+
 # ---------------------------------------------------------------- focus rules
 STREAK_MIN_SECS = 30 * 60        # default daily focus streak threshold
 STREAK_LOOKBACK_DAYS = 400       # how far back a streak chain is examined
@@ -212,6 +220,65 @@ def pomo_next_long(count):
     return (int(count) + 1) % 4 == 0
 
 # ---------------------------------------------------------------- config
+def activity_log_path(pet_id):
+    """Path of one pet's activity log — computed at call time so tests can
+    repoint PET_DIR. One pet, one memory (same rule as engine._log)."""
+    return os.path.join(PET_DIR, "activity-%s.jsonl" % pet_id)
+
+
+def prune_activity_log(pet_id, config=None):
+    """Cap a pet's activity log: size > ACTIVITY_MAX_BYTES, or events older
+    than ACTIVITY_PRUNE_DAYS. Rewrites once per day (config pruneDate guard),
+    keeping the newest ACTIVITY_PRUNE_LINES lines that are still fresh.
+
+    Never raises and never touches the file when it is fine — the engine's
+    append path must not break because a prune failed. Returns True when a
+    prune actually rewrote the file (the once/day guard is then persisted).
+    """
+    path = activity_log_path(pet_id)
+    cfg = config or {}
+    today = datetime.date.today().isoformat()
+    try:
+        if str(cfg.get(ACTIVITY_PRUNE_KEY) or "") == today:
+            return False
+        size = os.path.getsize(path)
+    except OSError:
+        return False
+    cutoff = time.time() - ACTIVITY_PRUNE_DAYS * 86400
+    # cheap trigger check: size is a stat; the age check reads ONE line (the
+    # oldest event is the first line of an append-only file).
+    if size <= ACTIVITY_MAX_BYTES:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                first = fh.readline()
+        except OSError:
+            return False
+        try:
+            oldest = json.loads(first).get("t")
+        except Exception:
+            oldest = None
+        if not (isinstance(oldest, (int, float)) and oldest < cutoff):
+            return False
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.readlines()
+        kept = []
+        for line in lines[-ACTIVITY_PRUNE_LINES:]:
+            try:
+                e = json.loads(line)
+                if isinstance(e.get("t"), (int, float)) and e["t"] < cutoff:
+                    continue
+            except Exception:
+                continue
+            kept.append(line)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.writelines(kept)
+    except OSError:
+        return False
+    save_config({ACTIVITY_PRUNE_KEY: today})
+    return True
+
+
 def load_config():
     default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50,
                "goalMin": GOAL_DEFAULT_MIN, "lastGoalDate": "",

@@ -36,6 +36,22 @@ A non-intrusive pet that reacts to real events - no polling loop. It reads OpenC
 - **Daily focus goal** - set a daily focus target (config `goalMin`); the pet
   celebrates with XP + a bubble when you hit it, once per day, and tracks
   your goal streak
+- **Pomodoro** - focus sprints with short/long break cycles (config
+  `pomoMin`/`pomoShort`/`pomoLong`)
+- **Break suite** - stretch nudges, tired-mood detection, break snooze
+  (`breakMin`/`stretchMin`)
+- **Memory & dreams** - daily wake dream, memory bubbles, life-epoch
+  milestones (`memoryMin`/`memoryMax`)
+- **Chronotype** - the pet's species evolves from your real working hours
+  (night owl, lark, midday, erratic, balanced)
+- **Data embodiment** - the pet's body and aura encode live day-health:
+  fog, bloom, storm, ember, quiet, flow
+- **Rituals & attention barter** - personal daily rituals derived from your
+  own history; banked focus minutes traded for form stages
+- **Memory lane** - a week of narrated days in the pet's voice, plus
+  lifestyle alerts and weekly wrap-ups
+- **Presence** - typing/cursor reactions, workflow perch, agent mirror, and
+  idle wandering (`reactTyping`/`reactCursor`/`perchChatter`/`agentMirror`/`wanderIdle`)
 
 ---
 
@@ -122,10 +138,11 @@ desktop\build.bat    # rebuild the exe
 python tests/run_all.py
 ```
 
-- 209 Python tests · 67 UI checks · 65 backend checks · 21 validation tests
+- 528 Python tests · frontend check via `check_frontend.py` · headless-Chrome
+  UI self-test via `run_all.py` (skipped when Chrome is absent)
 - `desktop/` is a package: `main.py` (entry) + `store.py` (config/data),
   `engine.py` (pet), `win32.py` (window), `api.py` (web bridge), `web.py`,
-  `sprites.py`, `tray.py`
+  `sprites.py`, `sounds.py`, `tray.py`
 
 ---
 

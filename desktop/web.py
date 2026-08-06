@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.parse
 
 from . import api, sprites, store
 
@@ -23,15 +24,45 @@ _FALLBACK_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 
 WEB_MAX_BODY = 1 << 20  # 1 MB RPC cap — a local process must not OOM the server
 
+# Static assets _file may hand out (P10): anything else is rejected outright.
+_FILE_EXT_WHITELIST = (".html", ".css", ".js", ".png", ".webp", ".json")
+
 
 def _file(name):
-    """Bundled non-sprite asset (app.html/control.html). MEIPASS first, then source tree."""
+    """Bundled non-sprite asset (app.html/control.html). MEIPASS first, then
+    source tree.
+
+    P10 hardening: path-traversal guard + extension whitelist. The name is
+    URL-decoded (a raw %2e%2e would otherwise be a literal filename), then
+    normalized and required to resolve INSIDE the served directory — ../,
+    encoded dots, absolute and drive-relative paths are all rejected.
+    """
+    ext = os.path.splitext(str(name or ""))[1].lower()
+    if ext not in _FILE_EXT_WHITELIST:
+        return None
+    try:
+        name = urllib.parse.unquote(name)
+    except Exception:
+        return None
+    if os.path.isabs(name):
+        return None
+
+    def inside(base, p):
+        try:
+            return os.path.commonpath([os.path.abspath(base), os.path.abspath(p)]) \
+                == os.path.abspath(base)
+        except (ValueError, OSError):
+            return False
+
     if getattr(sys, "_MEIPASS", None):
         for sub in ("", "desktop/"):
-            p = os.path.join(sys._MEIPASS, sub, name)
-            if os.path.exists(p):
+            p = os.path.normpath(os.path.join(sys._MEIPASS, sub, name))
+            if inside(sys._MEIPASS, p) and os.path.exists(p):
                 return p
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    base = os.path.dirname(os.path.abspath(__file__))
+    p = os.path.normpath(os.path.join(base, name))
+    if not inside(base, p):
+        return None
     return p if os.path.exists(p) else None
 
 
