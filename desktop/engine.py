@@ -66,6 +66,10 @@ EPOCH_BUBBLE_SECS = 5.0     # epoch celebration bubble lifetime
 XP_METAMORPH = 50           # metamorphosis into a chrono gene — a real milestone
 CHRONO_BUBBLE_SECS = 5.0    # metamorph / drift bubble lifetime
 
+# ---------------------------------------------------------------- day-body (P6)
+EMBODY_TICK_SECS = 30       # re-embody cadence (plus force on goal/focus events)
+STATIC_BUBBLE_SECS = 600    # max one error-static bubble per 10 min
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -121,6 +125,7 @@ class PetEngine:
         self._init_growth()
         self._init_memory()
         self._init_chrono()
+        self._init_embody()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -222,6 +227,18 @@ class PetEngine:
         self.chrono_week_date = str(self.cfg.get("chronoWeekDate", "") or "")
         self._chrono_checked = ""      # date of the last fingerprint evaluation
         self._chrono_glow_cache = {}   # gene aura -> prerendered glow
+
+    def _init_embody(self):
+        # P6: the pet's body IS the dashboard — day-health shown as aura +
+        # mood instead of meters. Re-derived every EMBODY_TICK_SECS (and on
+        # goal/focus events); aura overlay only, no sprite changes.
+        self._embody_state = "flow"
+        self._embody_intensity = 0.0
+        self._embody_since = time.time()
+        self._embody_aura = None       # store.EMBODY_AURA tuple or None
+        self._embody_glow_cache = {}   # (r,g,b,a) -> prerendered glow
+        self._last_embody = 0.0
+        self._last_static_bubble = 0.0  # error-static bubble cooldown
 
     def _log(self, kind, **data):
         """Append one JSON line to THIS pet's activity log — one pet, one memory."""
@@ -430,6 +447,7 @@ class PetEngine:
             self._pomo_tick()
             self.attention_until = now + FOCUS_ATTENTION_SECS
             self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}  # completion -> cast flash
+            self._embody_tick(now, force=True)  # P6: completion -> bloom/flow now
             return
         # wilt when the user leaves the session app or goes idle > 45s
         if self.os_active and self.os_app and self.os_app != self._focus_app:
@@ -439,6 +457,7 @@ class PetEngine:
                 self.bubble_text = "Hey, you left! My sprout is sad \ud83c\udf31"
                 self.bubble_until = now + FOCUS_BUBBLE_SECS
                 self._save_focus_state()
+                self._embody_tick(now, force=True)  # P6: wilted focus -> storm
         elif not self.os_active and now - self._wb_t > FOCUS_WILT_IDLE_SECS:
             if not self.focus_wilted:
                 self.focus_wilted = True
@@ -446,6 +465,7 @@ class PetEngine:
                 self.bubble_text = "Zzz\u2026 sprout needs you awake \ud83c\udf31"
                 self.bubble_until = now + FOCUS_BUBBLE_SECS
                 self._save_focus_state()
+                self._embody_tick(now, force=True)  # P6: wilted focus -> storm
 
     # ------------------------------------------------------------ XP / growth
     @staticmethod
@@ -530,6 +550,7 @@ class PetEngine:
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self.cast = {"until": now + GOAL_CAST_SECS, "started": now}  # celebration cast flash
         self._log("goal", goalMin=self.goal_min)
+        self._embody_tick(now, force=True)  # P6: goal met -> bloom immediately
 
     def _rollover_wellbeing(self):
         """The day changed: fold the finished day's total into history and
@@ -902,6 +923,10 @@ class PetEngine:
         cglow = self._chrono_glow()
         if cglow:
             canvas.alpha_composite(cglow)
+        # P6: embodied day-state aura on top — the pet LOOKS like your day
+        eglow = self._embody_glow()
+        if eglow:
+            canvas.alpha_composite(eglow)
         if self.sheet:
             st = sprites.pet_states(self.pet)
             anim = next((a for a in st if a["id"] == self._anim_id()), st[0])
@@ -1246,6 +1271,8 @@ class PetEngine:
         self._epoch_tick(now)
         # P5: chronotype metamorphosis + weekly drift (once per day; cheap)
         self._chrono_tick(now)
+        # P6: day-body (30s cadence; goal/focus events force an earlier pass)
+        self._embody_tick(now)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1672,6 +1699,99 @@ class PetEngine:
                     dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
                                fill=(col[0], col[1], col[2], a))
                 self._chrono_glow_cache[key] = glow
+            return glow
+        except Exception:
+            return None
+
+    # ------------------------------------------------------- day-body (P6)
+    def _errors_today(self, now=None):
+        """Count today's error/retry transitions from THIS pet's activity log.
+        The engine logs one 'state' line per transition, so each line is one
+        error cluster."""
+        today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+        n = 0
+        try:
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if e.get("kind") == "state" and e.get("state") in ("error", "retry") \
+                            and time.strftime("%Y-%m-%d",
+                                              time.localtime(e.get("t", 0))) == today:
+                        n += 1
+        except Exception:
+            pass
+        return n
+
+    def _embody_tick(self, now, force=False):
+        """Re-derive the embodied day state (every 30s, plus force on
+        goal/focus events) and apply the visual overlay — aura colour/glow
+        + a bubble-less mood hint. No sprite changes: the pet LOOKS like the
+        day through the aura surface only."""
+        if not force and now - getattr(self, "_last_embody", 0.0) < EMBODY_TICK_SECS:
+            return
+        self._last_embody = now
+        errors = self._errors_today(now)
+        focus = {"active": bool(getattr(self, "focus_active", False)),
+                 "elapsed": (now - float(getattr(self, "focus_started", now) or now))
+                            if getattr(self, "focus_active", False) else 0.0,
+                 "wilted": bool(getattr(self, "focus_wilted", False))}
+        h = store.day_health({"date": getattr(self, "_wb_date", time.strftime("%Y-%m-%d")),
+                              "apps": getattr(self, "_wb", {}) or {},
+                              "hourToday": getattr(self, "_hour_today", {}) or {}},
+                             errors=errors, focus=focus, goal_min=self.goal_min, now=now)
+        if h["state"] != self._embody_state:
+            self._embody_state = h["state"]
+            self._embody_since = now
+            self._embody_glow_cache.clear()
+            self._log("embody", state=h["state"], intensity=round(h["intensity"], 2))
+        self._embody_intensity = h["intensity"]
+        self._embody_aura = store.EMBODY_AURA.get(h["state"])
+        # bubble-less mood hint: a foggy day reads as tired (sticky like the
+        # break-nudge tired, until the next mood-setting event)
+        if h["state"] == "fog" and self.mood not in ("happy", "tired"):
+            self.mood = "tired"
+        # error static: one bubble per error cluster, max one per 10 min
+        if h["state"] == "storm" and errors > 0 \
+                and now - self._last_static_bubble >= STATIC_BUBBLE_SECS:
+            self._last_static_bubble = now
+            self.bubble_text = store.EMBODY_LABELS["storm_error"]
+            self.bubble_until = now + FOCUS_BUBBLE_SECS
+            self._log("static", errors=errors)
+
+    def _embody_glow(self):
+        """Soft radial aura for the embodied day state, alpha scaled by
+        intensity. None when the state carries no extra aura (quiet/flow keep
+        the chrono gene's glow)."""
+        try:
+            spec = getattr(self, "_embody_aura", None)
+            if not spec:
+                return None
+            a = int(spec[3] * (0.35 + 0.65 * getattr(self, "_embody_intensity", 0.5)))
+            if a <= 0:
+                return None
+            col = (spec[0], spec[1], spec[2], a)
+            cache = getattr(self, "_embody_glow_cache", None)
+            if cache is None:
+                self._embody_glow_cache = cache = {}
+            glow = cache.get(col)
+            if glow is None:
+                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
+                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
+                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                dr = ImageDraw.Draw(glow)
+                cx, cy = w // 2, int(h * 0.52)
+                r = max(6, int(min(w, h) * 0.42))
+                for rr in range(r, 0, -2):
+                    aa = int(a * (1 - rr / r) ** 2)
+                    if aa <= 0:
+                        continue
+                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                               fill=(spec[0], spec[1], spec[2], aa))
+                cache[col] = glow
             return glow
         except Exception:
             return None

@@ -1154,6 +1154,19 @@ body {
   border: 1px solid rgba(226, 162, 60, 0.28);
 }
 .mem-empty { font-size: 12px; color: var(--text3); line-height: 1.5; }
+/* ---------- day-body card (P6): the pet embodies your day ---------- */
+.db-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.03em;
+  padding: 3px 9px; border-radius: 999px; text-transform: capitalize;
+}
+.db-chip.fog { color: #a8abc4; background: rgba(125, 128, 145, 0.14); border: 1px solid rgba(125, 128, 145, 0.32); }
+.db-chip.bloom { color: #e8b04b; background: rgba(255, 205, 110, 0.12); border: 1px solid rgba(255, 205, 110, 0.3); }
+.db-chip.storm { color: #ff7b84; background: rgba(226, 84, 84, 0.12); border: 1px solid rgba(226, 84, 84, 0.32); }
+.db-chip.ember { color: #ff9a5e; background: rgba(255, 118, 46, 0.12); border: 1px solid rgba(255, 118, 46, 0.32); }
+.db-chip.quiet { color: var(--text3); background: rgba(112, 112, 122, 0.1); border: 1px solid rgba(112, 112, 122, 0.25); }
+.db-chip.flow { color: var(--ok); background: rgba(141, 196, 157, 0.1); border: 1px solid rgba(141, 196, 157, 0.28); }
+.db-label { font-size: 12px; line-height: 1.55; color: var(--text); margin-top: 8px; }
 .prof { border-radius: var(--r-lg); }
 .prof-ava {
   width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font-size: 30px;
@@ -1700,6 +1713,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Chronotype</div>
               <div id="chronoCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Day-Body</div>
+              <div id="dayBodyCard"></div>
             </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
@@ -3189,6 +3206,27 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      /* ---------- day-body (P6): the pet embodies your day ---------- */
+      var _dayBodySig = "";
+      function renderDayBody(m) {
+        var el = document.getElementById("dayBodyCard");
+        if (!el) return;
+        var sig = JSON.stringify(m || {});
+        if (sig === _dayBodySig && el.childElementCount) return;
+        _dayBodySig = sig;
+        m = m || {};
+        var st = String(m.state || "flow");
+        el.innerHTML = '<span class="db-chip ' + st + '">' + esc(st) + '</span>' +
+          '<div class="db-label">' + esc(String(m.label || "")) + '</div>';
+      }
+
+      function refreshDayBody() {
+        if (!api) return;
+        api.get_day_health().then(function (m) {
+          if (m && typeof m === "object") renderDayBody(m);
+        }).catch(function () {});
+      }
+
       /* ---------- 7-day focus history chart ---------- */
       function localDate(d) {
         return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
@@ -3576,6 +3614,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshPomo, 10000);
       setInterval(refreshMemory, 10000);
       setInterval(refreshChrono, 10000);
+      setInterval(refreshDayBody, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

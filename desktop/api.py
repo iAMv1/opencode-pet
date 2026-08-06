@@ -19,7 +19,7 @@ _WEB_METHODS = [
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
-    "get_focus_peaks", "get_memory_state", "get_chronotype",
+    "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -355,6 +355,61 @@ class ControlApi:
                 "neededDays": store.CHRONO_MIN_DAYS,
                 "nextReview": store.chrono_next_review(c.get("chronoWeekDate")),
                 "readout": store.chrono_readout(chrono_type, profile)}
+
+    def get_day_health(self):
+        """Day-body (P6): the pet's embodied day state — the SAME pure store
+        rule the pet engine draws, so the card can never disagree with the
+        aura. Errors come from this pet's activity log, focus from focus.json.
+
+        since = wall-clock epoch the current state began (from the pet's own
+        embody log); 0 when the engine hasn't logged one yet.
+        """
+        d = store.read_wellbeing()
+        pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
+        log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id)
+        today = time.strftime("%Y-%m-%d")
+        errors = 0
+        since = 0.0
+        try:
+            with open(log_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if e.get("kind") == "state" and e.get("state") in ("error", "retry") \
+                            and time.strftime("%Y-%m-%d",
+                                              time.localtime(e.get("t", 0))) == today:
+                        errors += 1
+        except Exception:
+            pass
+        focus = {}
+        try:
+            with open(store.FOCUS_FILE, encoding="utf-8") as fh:
+                f = json.load(fh)
+            if isinstance(f, dict) and f.get("active"):
+                focus = {"active": True,
+                         "elapsed": time.time() - float(f.get("startedAt", 0) or 0),
+                         "wilted": bool(f.get("wilted"))}
+        except Exception:
+            pass
+        h = store.day_health(d if isinstance(d, dict) else {},
+                             errors=errors, focus=focus or None,
+                             goal_min=store.goal_minutes(store.load_config()))
+        # wall-clock start of the current state (append-ordered embody log)
+        try:
+            with open(log_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if e.get("kind") == "embody" and e.get("state") == h["state"]:
+                        since = float(e.get("t", 0) or 0)
+        except Exception:
+            pass
+        return {"state": h["state"], "label": h["label"],
+                "intensity": h["intensity"], "since": since}
 
     def get_pomo_state(self):
         """Pomodoro cycle state for the dashboard rail card.

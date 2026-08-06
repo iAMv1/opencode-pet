@@ -57,6 +57,97 @@ CHRONO_COVERAGE = 20           # hours with data >= this -> all-day, no rhythm
 CHRONO_SPLIT_GAP_H = 6         # far-apart second peak -> hybrid/erratic schedule
 CHRONO_SPLIT_SHARE = 0.25      # that second peak must hold this share of total
 
+# ---------------------------------------------------------------- day-body (P6)
+QUIET_MIN_SECS = 600           # < 10 min tracked today -> the pet sleeps
+FOG_IDLE_RATIO = 0.40          # > 40% of tracked time idle -> fog (pet droops)
+FOG_RAMP = 0.60                # idle ratio where fog intensity hits 1.0
+BLOOM_FOCUS_SECS = 3600        # >= 1h continuous focus -> bloom
+EMBER_SATURATED = 4            # >= 4 saturated hours today -> ember
+EMBER_RAMP = 6                 # saturated hours where ember intensity hits 1.0
+STORM_ERROR_STEP = 0.15        # storm intensity climbs 0.15 per error cluster
+STORM_WILT_INTENSITY = 0.6     # focus wilt storm intensity
+FLOW_RAMP_SECS = 8 * 3600      # tracked time where flow intensity hits 1.0
+
+# Aura per embodied state: (r, g, b, a) overlay, or None = no extra aura
+# (quiet/flow keep whatever the chrono gene already glows).
+EMBODY_AURA = {
+    "fog":   (125, 128, 145, 46),
+    "bloom": (255, 205, 110, 60),
+    "storm": (226, 84, 84, 55),
+    "ember": (255, 118, 46, 55),
+    "quiet": None,
+    "flow":  None,
+}
+
+EMBODY_LABELS = {
+    "fog":          "Your day feels foggy \u2014 %s idle",
+    "bloom_goal":   "Your day is in full bloom \u2014 daily goal met!",
+    "bloom_focus":  "Your day is in full bloom \u2014 %dh of deep focus",
+    "storm_error":  "A session errored \u2014 I felt the static",
+    "storm_wilt":   "Your focus wilted \u2014 the day feels stormy",
+    "ember":        "Embers burning \u2014 %d deep hours today",
+    "quiet":        "The day is quiet \u2014 I'm resting too",
+    "flow":         "Steady flow \u2014 the day hums along",
+}
+
+
+def day_health(wellbeing, errors=0, focus=None, goal_min=GOAL_DEFAULT_MIN, now=None):
+    """Embodied day state — the pet's body IS the dashboard. Pure: the engine
+    aura and the dashboard card both build on this one rule, so they can never
+    disagree.
+
+    wellbeing: dict with date/apps/hourToday (the engine's live state or the
+    wellbeing.json file — same shape). errors: count of today's error/retry
+    transitions from the activity log. focus: optional {"active", "elapsed",
+    "wilted"} for a live focus session. goal_min: the daily focus-goal
+    minutes. Returns {"state", "intensity", "label"} with intensity 0-1
+    scaled by the magnitude driving the state.
+
+    Priority: storm > quiet > fog > bloom > ember > flow. Quiet exits before
+    fog so a day that hasn't started sleeps instead of drooping — with the
+    pet running overnight, idle dominates the first tracked minutes either
+    way, and "fog on an empty day" would fire before the user ever sits down.
+    """
+    now = now if now is not None else time.time()
+    today = datetime.date.fromtimestamp(now).isoformat()
+    d = wellbeing or {}
+    apps = d.get("apps") if d.get("date") == today and isinstance(d.get("apps"), dict) else {}
+    total = int(sum(v for v in apps.values() if isinstance(v, (int, float))))
+    idle = int(apps.get("Idle", 0) or 0)
+    focused = max(0, total - idle)
+    f = focus or {}
+    if int(errors or 0) > 0 or f.get("wilted"):
+        if int(errors or 0) > 0:
+            return {"state": "storm",
+                    "intensity": min(1.0, 0.5 + int(errors) * STORM_ERROR_STEP),
+                    "label": EMBODY_LABELS["storm_error"]}
+        return {"state": "storm", "intensity": STORM_WILT_INTENSITY,
+                "label": EMBODY_LABELS["storm_wilt"]}
+    if total < QUIET_MIN_SECS:
+        return {"state": "quiet", "intensity": 1.0 - total / QUIET_MIN_SECS,
+                "label": EMBODY_LABELS["quiet"]}
+    if total > 0 and idle / total > FOG_IDLE_RATIO:
+        pct = int(round(idle * 100.0 / total))
+        return {"state": "fog", "intensity": min(1.0, idle / total / FOG_RAMP),
+                "label": EMBODY_LABELS["fog"] % ("%d%%" % pct)}
+    if focused >= max(1, int(goal_min or GOAL_DEFAULT_MIN)) * 60:
+        return {"state": "bloom", "intensity": 1.0,
+                "label": EMBODY_LABELS["bloom_goal"]}
+    elapsed = float(f.get("elapsed", 0) or 0)
+    if elapsed >= BLOOM_FOCUS_SECS:
+        return {"state": "bloom", "intensity": min(1.0, elapsed / BLOOM_FOCUS_SECS),
+                "label": EMBODY_LABELS["bloom_focus"] % (int(elapsed) // 3600)}
+    hours = d.get("hourToday") if d.get("date") == today \
+        and isinstance(d.get("hourToday"), dict) else {}
+    saturated = [h for h, s in hours.items()
+                 if isinstance(s, (int, float)) and s >= CHRONO_ACTIVE_FLOOR]
+    if len(saturated) >= EMBER_SATURATED:
+        return {"state": "ember", "intensity": min(1.0, len(saturated) / EMBER_RAMP),
+                "label": EMBODY_LABELS["ember"] % len(saturated)}
+    return {"state": "flow", "intensity": min(1.0, total / FLOW_RAMP_SECS),
+            "label": EMBODY_LABELS["flow"]}
+
+
 # ---------------------------------------------------------------- memory / wake
 MEMORY_MIN_DEFAULT = 60          # minutes of work time between memory bubbles
 MEMORY_MAX_DEFAULT = 3           # max memory bubbles per day
