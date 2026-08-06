@@ -20,6 +20,7 @@ _WEB_METHODS = [
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
     "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
+    "get_rituals", "get_barter_state", "barter_pay",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -425,6 +426,51 @@ class ControlApi:
                 "pomoMin": int(c.get("pomoMin", 25) or 25),
                 "pomoShort": int(c.get("pomoShort", 5) or 5),
                 "pomoLong": int(c.get("pomoLong", 15) or 15)}
+
+    def get_rituals(self):
+        """Today's personal rituals (P7) with LIVE progress — the same pure
+        store derivation and progress rules the pet engine uses, so the card
+        can never disagree with the bubble. Prefers the engine's persisted
+        daily list (ritualDate/ritualList) and falls back to deriving fresh
+        when the engine hasn't run today (e.g. dashboard-only session)."""
+        c = store.load_config()
+        d = store.read_wellbeing()
+        wb = d if isinstance(d, dict) else {}
+        today = time.strftime("%Y-%m-%d")
+        rituals = []
+        if str(c.get("ritualDate") or "") == today:
+            rl = c.get("ritualList")
+            if isinstance(rl, list):
+                rituals = [dict(r) for r in rl if isinstance(r, dict)]
+        if not rituals:
+            rituals = store.derive_rituals(wb, 0, c)
+        for r in rituals:
+            p = store.ritual_progress(r, wb, c)
+            r["current"] = p["current"]
+            r["done"] = p["done"]
+        return {"ritualDate": today, "rituals": rituals}
+
+    def get_barter_state(self):
+        """Attention barter (P7): banked focus minutes, form stage, and the
+        next tradable stage. offered = the pet asked for this trade today
+        (pending confirmation); the trade itself is available whenever the
+        bank covers the cost."""
+        c = store.load_config()
+        bank = int(c.get("barterBank", 0) or 0)
+        stage = int(c.get("barterStage", 0) or 0)
+        offer = store.barter_next_offer(stage)
+        today = time.strftime("%Y-%m-%d")
+        od = str(c.get("barterOfferDate") or "")
+        offered = bool(od and od == today and offer is not None
+                       and bank >= offer["costMinutes"])
+        return {"bank": bank, "stage": stage, "nextOffer": offer,
+                "offered": offered}
+
+    def barter_pay(self):
+        """Confirm the standing barter offer — writes the one-shot command;
+        the pet process owns the trade (bank deduction + stage-up ceremony)."""
+        self._cmd("barterPay")
+        return True
 
     def get_weekly_wrapped(self):
         """'Your Week in Focus' summary: totals, best day, top app, streak,

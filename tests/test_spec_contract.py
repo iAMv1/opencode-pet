@@ -22,6 +22,7 @@ ALL_METHODS = {
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
     "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
+    "get_rituals", "get_barter_state", "barter_pay",
     "next_pet", "prev_pet", "save_config", "hide_pet", "show_pet",
     "hide_control", "quit",
 }

@@ -70,6 +70,15 @@ CHRONO_BUBBLE_SECS = 5.0    # metamorph / drift bubble lifetime
 EMBODY_TICK_SECS = 30       # re-embody cadence (plus force on goal/focus events)
 STATIC_BUBBLE_SECS = 600    # max one error-static bubble per 10 min
 
+# ---------------------------------------------------------------- rituals (P7)
+XP_RITUAL = 15              # a completed personal ritual IS earned, not spam
+RITUAL_BUBBLE_SECS = 5.0    # ritual completion / day-close bubble lifetime
+
+# ---------------------------------------------------------------- barter (P7)
+XP_BARTER = 20              # a traded form stage — the user's attention, paid
+BARTER_BUBBLE_SECS = 5.0    # barter ask / ceremony bubble lifetime
+BARTER_SHIMMER_SECS = 90    # periodic cast shimmer between stages (visual only)
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -126,6 +135,8 @@ class PetEngine:
         self._init_memory()
         self._init_chrono()
         self._init_embody()
+        self._init_rituals()
+        self._init_barter()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -239,6 +250,27 @@ class PetEngine:
         self._embody_glow_cache = {}   # (r,g,b,a) -> prerendered glow
         self._last_embody = 0.0
         self._last_static_bubble = 0.0  # error-static bubble cooldown
+
+    def _init_rituals(self):
+        # P7: personal rituals derived from the user's OWN history. Derived
+        # once per day (ritualDate in config guards restarts); ritualDone
+        # lists the ids completed today so XP awards exactly once per ritual.
+        rl = self.cfg.get("ritualList")
+        self._rituals = [dict(r) for r in rl if isinstance(r, dict)] \
+            if isinstance(rl, list) else []
+        self._ritual_done = set(self.cfg.get("ritualDone") or [])
+        self._dayclose_date = str(self.cfg.get("ritualCloseDate", "") or "")
+
+    def _init_barter(self):
+        # P7: attention barter — banked focus minutes traded for form stages.
+        # bank/stage/offerDate live in config (survive restarts); the seconds
+        # accumulator flushes whole minutes to the bank at most once/min.
+        self._barter_bank = int(self.cfg.get("barterBank", 0) or 0)
+        self._barter_stage = int(self.cfg.get("barterStage", 0) or 0)
+        self._barter_offer_date = str(self.cfg.get("barterOfferDate", "") or "")
+        self._barter_acc = 0.0
+        self._last_barter_shimmer = 0.0
+        self._barter_glow_cache = {}   # stage -> prerendered radiance glow
 
     def _log(self, kind, **data):
         """Append one JSON line to THIS pet's activity log — one pet, one memory."""
@@ -617,6 +649,9 @@ class PetEngine:
             if app in ("Explorer", "Program Manager"):
                 app = "Desktop"
             self._memory_work = getattr(self, "_memory_work", 0.0) + dt  # work time feeds recalls
+            # P7: banked attention — active (non-idle) seconds accrue toward
+            # the barter bank; the engine flushes whole minutes later
+            self._barter_acc = getattr(self, "_barter_acc", 0.0) + dt
         self._wb[app] = self._wb.get(app, 0) + dt
         # hour-of-day bucket (used by the "best focus time" analysis)
         if getattr(self, "_hour_today", None) is not None:
@@ -927,6 +962,10 @@ class PetEngine:
         eglow = self._embody_glow()
         if eglow:
             canvas.alpha_composite(eglow)
+        # P7: attention-barter radiance — glow tier per traded form stage
+        bglow = self._barter_glow()
+        if bglow:
+            canvas.alpha_composite(bglow)
         if self.sheet:
             st = sprites.pet_states(self.pet)
             anim = next((a for a in st if a["id"] == self._anim_id()), st[0])
@@ -1225,6 +1264,13 @@ class PetEngine:
                 self.stop_focus()
             finally:
                 self._clear_command("focusStop")
+        if c.get("barterPay"):
+            # P7: one-shot attention-barter confirmation from the dashboard
+            try:
+                self._barter_pay()
+            finally:
+                # clear even on failure so a bad command can't retrigger
+                self._clear_command("barterPay")
         if changed:
             store.save_config(self.cfg)
 
@@ -1273,6 +1319,9 @@ class PetEngine:
         self._chrono_tick(now)
         # P6: day-body (30s cadence; goal/focus events force an earlier pass)
         self._embody_tick(now)
+        # P7: personal rituals + attention barter (daily derive + live progress)
+        self._ritual_tick(now)
+        self._barter_tick(now)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1792,6 +1841,185 @@ class PetEngine:
                     dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
                                fill=(spec[0], spec[1], spec[2], aa))
                 cache[col] = glow
+            return glow
+        except Exception:
+            return None
+
+    # ------------------------------------------------------- rituals (P7)
+    def _ritual_wellbeing(self):
+        """The engine's live wellbeing shape — the same dict shape the
+        dashboard reads from disk, so derive/progress can't disagree."""
+        return {"date": self._wb_date, "apps": self._wb or {},
+                "hourToday": getattr(self, "_hour_today", {}) or {},
+                "history": getattr(self, "_history", {}) or {},
+                "hourHistory": getattr(self, "_hour_history", {}) or {},
+                "appHistory": getattr(self, "_app_history", {}) or {}}
+
+    def _save_ritual_state(self):
+        try:
+            c = store.load_config()
+            c["ritualDate"] = str(self.cfg.get("ritualDate", "") or "")
+            c["ritualList"] = self._rituals
+            c["ritualDone"] = sorted(self._ritual_done)
+            c["ritualCloseDate"] = self._dayclose_date
+            store.save_config(c)
+        except Exception:
+            pass
+
+    def _ritual_tick(self, now):
+        """Personal rituals: derive fresh each day (ritualDate guard, survives
+        restarts), track live progress against REAL data, celebrate each
+        completion once (+15 XP — earned, not spam), and close the day quietly
+        at 22:00 with no punishment for what went unfinished."""
+        today = time.strftime("%Y-%m-%d")
+        if str(self.cfg.get("ritualDate") or "") != today:
+            self._rituals = store.derive_rituals(
+                self._ritual_wellbeing(), self._focus_count(), self.cfg)
+            self._ritual_done = set()
+            self.cfg["ritualDate"] = today
+            self.cfg["ritualList"] = self._rituals
+            self._save_ritual_state()
+        if not self._rituals:
+            return
+        wb = self._ritual_wellbeing()
+        # live progress + one celebration per tick (bubble wins)
+        for r in self._rituals:
+            if r.get("id") in self._ritual_done:
+                continue
+            p = store.ritual_progress(r, wb, self.cfg, now=now)
+            r["current"] = p["current"]
+            r["done"] = p["done"]
+            if p["done"]:
+                self._ritual_done.add(r["id"])
+                self._save_ritual_state()
+                self._award_xp(XP_RITUAL, "ritual")
+                self.mood = "happy"
+                self.bubble_text = "Ritual complete: %s" % r["name"]
+                self.bubble_until = now + RITUAL_BUBBLE_SECS
+                self.attention_until = now + FOCUS_ATTENTION_SECS
+                self._log("ritual", id=r["id"], name=r["name"])
+                break
+        # quiet end-of-day close: only when the day's rituals exist, the hour
+        # has passed 22:00, and at least one went unfinished. No XP, no chime.
+        # Defers while a substantive bubble (dream/goal/celebration) is live —
+        # a quiet line never interrupts a moment.
+        if time.localtime(now).tm_hour >= 22 \
+                and self._dayclose_date != today \
+                and now >= self.attention_until \
+                and any(not r.get("done") for r in self._rituals):
+            self._dayclose_date = today
+            self.cfg["ritualCloseDate"] = today
+            self._save_ritual_state()
+            self.bubble_text = "Tomorrow's a new day"
+            self.bubble_until = now + RITUAL_BUBBLE_SECS
+            self._log("dayclose",
+                      pending=sum(1 for r in self._rituals if not r.get("done")))
+
+    # ------------------------------------------------------- barter (P7)
+    def _save_barter(self):
+        try:
+            c = store.load_config()
+            c["barterBank"] = self._barter_bank
+            c["barterStage"] = self._barter_stage
+            c["barterOfferDate"] = self._barter_offer_date
+            store.save_config(c)
+        except Exception:
+            pass
+        self.cfg["barterBank"] = self._barter_bank
+        self.cfg["barterStage"] = self._barter_stage
+        self.cfg["barterOfferDate"] = self._barter_offer_date
+
+    def _barter_pay(self):
+        """Confirm the standing offer: deduct banked minutes, advance one form
+        stage, celebrate (20 XP + ceremony). Returns False when the offer is
+        not tradable yet — the dashboard only shows the button when it is."""
+        offer = store.barter_next_offer(self._barter_stage)
+        if not offer or self._barter_bank < offer["costMinutes"]:
+            return False
+        now = time.time()
+        self._barter_bank -= offer["costMinutes"]
+        self._barter_stage = offer["stage"]
+        self._barter_offer_date = ""
+        self._save_barter()
+        self._award_xp(XP_BARTER, "barter")
+        self.mood = "happy"
+        self.bubble_text = "Shift complete: %s \u2728" % offer["name"]
+        self.bubble_until = now + BARTER_BUBBLE_SECS
+        self.attention_until = now + FOCUS_ATTENTION_SECS
+        self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
+        self._log("barter", stage=offer["stage"], cost=offer["costMinutes"],
+                  name=offer["name"])
+        return True
+
+    def _barter_tick(self, now):
+        """Attention barter: flush accrued seconds to the bank, run the offer
+        lifecycle (ask when the bank covers the next stage, expire quietly
+        after BARTER_EXPIRE_DAYS with the bank kept — no punishment), and
+        shimmer the form aura periodically between stages."""
+        acc = getattr(self, "_barter_acc", 0.0)
+        if acc >= 60.0:
+            whole = int(acc // 60.0)
+            acc -= whole * 60.0
+            self._barter_bank += whole
+            self._save_barter()
+        self._barter_acc = acc
+        offer = store.barter_next_offer(self._barter_stage)
+        if offer:
+            today = time.strftime("%Y-%m-%d")
+            od = self._barter_offer_date
+            days = 0
+            if od:
+                try:
+                    days = (datetime.date.today()
+                            - datetime.date.fromisoformat(od)).days
+                except (TypeError, ValueError):
+                    days = store.BARTER_EXPIRE_DAYS
+            if od and od != today and days >= store.BARTER_EXPIRE_DAYS:
+                # the offer window closed quietly — bank kept, no punishment.
+                # Marking today suppresses the re-ask until tomorrow.
+                self._barter_offer_date = today
+                self._save_barter()
+            elif od != today and self._barter_bank >= offer["costMinutes"]:
+                # ask (or re-offer after a quiet expiry): once per day
+                self._barter_offer_date = today
+                self._save_barter()
+                self.bubble_text = ("I can shift form \u2014 trade %d "
+                                    "focus-minutes?" % offer["costMinutes"])
+                self.bubble_until = now + BARTER_BUBBLE_SECS
+                self._log("barterAsk", stage=offer["stage"],
+                          cost=offer["costMinutes"])
+        # visual tier: periodic cast shimmer once a form stage is earned
+        if self._barter_stage > 0 and not self.cast \
+                and now - self._last_barter_shimmer >= BARTER_SHIMMER_SECS:
+            self._last_barter_shimmer = now
+            self.cast = {"until": now + 0.6, "started": now}
+
+    def _barter_glow(self):
+        """Attention-barter radiance: a warm glow whose size and alpha rise
+        with each traded stage (0-4) — visual milestone only, no sprite."""
+        try:
+            stage = int(getattr(self, "_barter_stage", 0) or 0)
+            if stage <= 0:
+                return None
+            cache = getattr(self, "_barter_glow_cache", None)
+            if cache is None:
+                self._barter_glow_cache = cache = {}
+            glow = cache.get(stage)
+            if glow is None:
+                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
+                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
+                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                dr = ImageDraw.Draw(glow)
+                cx, cy = w // 2, int(h * 0.52)
+                a = min(255, 16 + stage * 24)
+                r = max(6, int(min(w, h) * (0.42 + 0.05 * stage)))
+                for rr in range(r, 0, -2):
+                    aa = int(a * (1 - rr / r) ** 2)
+                    if aa <= 0:
+                        continue
+                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                               fill=(255, 214, 140, aa))
+                cache[stage] = glow
             return glow
         except Exception:
             return None

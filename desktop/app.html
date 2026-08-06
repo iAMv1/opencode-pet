@@ -1167,6 +1167,16 @@ body {
 .db-chip.quiet { color: var(--text3); background: rgba(112, 112, 122, 0.1); border: 1px solid rgba(112, 112, 122, 0.25); }
 .db-chip.flow { color: var(--ok); background: rgba(141, 196, 157, 0.1); border: 1px solid rgba(141, 196, 157, 0.28); }
 .db-label { font-size: 12px; line-height: 1.55; color: var(--text); margin-top: 8px; }
+/* ---------- rituals card (P7): derived from your own history ---------- */
+.rit { padding: 9px 0; border-top: 1px solid var(--border); }
+.rit:first-child { padding-top: 0; border-top: 0; }
+.rit-name { font-size: 13px; font-weight: 640; }
+.rit.done .rit-name { color: var(--ok); }
+.rit-desc { font-size: 11.5px; color: var(--text3); margin-top: 2px; line-height: 1.4; }
+.rit-bar { height: 4px; border-radius: 2px; background: var(--bg2); border: 1px solid var(--border); margin-top: 6px; overflow: hidden; }
+.rit-bar span { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, rgba(246, 179, 92, 0.45), var(--accent)); }
+.rit.done .rit-bar span { background: var(--ok); }
+.rit .btn { width: 100%; }
 .prof { border-radius: var(--r-lg); }
 .prof-ava {
   width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font-size: 30px;
@@ -1717,6 +1727,14 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Day-Body</div>
               <div id="dayBodyCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Rituals</div>
+              <div id="ritualCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Barter</div>
+              <div id="barterCard"></div>
             </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
@@ -3227,6 +3245,82 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      /* ---------- rituals (P7): daily rituals from your own history ---------- */
+      var _ritSig = "";
+      function renderRituals(m) {
+        var el = document.getElementById("ritualCard");
+        if (!el) return;
+        var sig = JSON.stringify(m || {});
+        if (sig === _ritSig && el.childElementCount) return;
+        _ritSig = sig;
+        m = m || {};
+        var rs = m.rituals || [];
+        if (!rs.length) {
+          el.innerHTML = '<div class="mem-empty">Rituals form from your own focus history \u2014 the pet needs a few days of you before it can guard your hours.</div>';
+          return;
+        }
+        el.innerHTML = rs.map(function (r) {
+          var cur = Number(r.current) || 0;
+          var tgt = Number(r.target) || 1;
+          var pct = Math.min(100, Math.round(cur * 100 / tgt));
+          return '<div class="rit' + (r.done ? " done" : "") + '">' +
+            '<div class="rit-name">' + (r.done ? "\u2713 " : "") + esc(String(r.name || "")) + '</div>' +
+            '<div class="rit-desc">' + esc(String(r.desc || "")) + '</div>' +
+            '<div class="goal-sub" style="margin-top:4px">' + cur + ' / ' + tgt + ' min</div>' +
+            '<div class="rit-bar"><span style="width:' + pct + '%"></span></div>' +
+            '</div>';
+        }).join("");
+      }
+
+      function refreshRituals() {
+        if (!api) return;
+        api.get_rituals().then(function (m) {
+          if (m && typeof m === "object") renderRituals(m);
+        }).catch(function () {});
+      }
+
+      /* ---------- barter (P7): attention barter ---------- */
+      var _barSig = "";
+      function renderBarter(m) {
+        var el = document.getElementById("barterCard");
+        if (!el) return;
+        var sig = JSON.stringify(m || {});
+        if (sig === _barSig && el.childElementCount) return;
+        _barSig = sig;
+        m = m || {};
+        var off = m.nextOffer || null;
+        var bank = Number(m.bank) || 0;
+        var stage = Number(m.stage) || 0;
+        var body;
+        if (!off) {
+          body = '<div class="mem-empty">Full form reached \u2014 your attention is fully seen.</div>';
+        } else {
+          var cost = Number(off.costMinutes) || 0;
+          var ready = bank >= cost;
+          var pct = cost ? Math.min(100, Math.round(bank * 100 / cost)) : 0;
+          body = '<div class="rit-name">Stage ' + (stage + 1) + ' \u2014 ' + esc(String(off.name || "")) + '</div>' +
+            '<div class="rit-desc">' + esc(String(off.desc || "")) + '</div>' +
+            '<div class="goal-sub" style="margin-top:4px">' + bank + ' / ' + cost + ' focus-minutes</div>' +
+            '<div class="rit-bar"><span style="width:' + pct + '%"></span></div>' +
+            (ready
+              ? '<button class="btn" style="margin-top:8px" id="barterConfirm">Trade ' + cost + ' min</button>'
+              : '<div class="goal-sub" style="margin-top:6px">' + (cost - bank) + ' more minutes to trade</div>');
+        }
+        el.innerHTML = body;
+        var btn = el.querySelector("#barterConfirm");
+        if (btn) btn.addEventListener("click", function () {
+          if (!api) return;
+          api.barter_pay().then(function () { refreshBarter(); }).catch(function () {});
+        });
+      }
+
+      function refreshBarter() {
+        if (!api) return;
+        api.get_barter_state().then(function (m) {
+          if (m && typeof m === "object") renderBarter(m);
+        }).catch(function () {});
+      }
+
       /* ---------- 7-day focus history chart ---------- */
       function localDate(d) {
         return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
@@ -3434,6 +3528,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         refreshCompanion();
         refreshHeatmap();
         refreshPeaks();
+        refreshRituals();
+        refreshBarter();
       }
 
       var FALLBACK_PETS = ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat", "Emberkit"]
@@ -3615,6 +3711,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshMemory, 10000);
       setInterval(refreshChrono, 10000);
       setInterval(refreshDayBody, 10000);
+      setInterval(refreshRituals, 10000);
+      setInterval(refreshBarter, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

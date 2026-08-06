@@ -47,6 +47,33 @@ EVOLVE_LEVEL_2 = 5
 EVOLVE_LEVEL_3 = 10
 GOAL_DEFAULT_MIN = 120
 
+# ---------------------------------------------------------------- rituals (P7)
+# Personal rituals derived from the user's OWN history — never canned quests.
+RITUAL_MAX_DAILY = 3           # at most 3 rituals per day, in priority order
+RITUAL_GUARD_MIN_SECS = 3600   # guard_hour fires only for a >= 1h avg best hour
+RITUAL_BEAT_MIN_SECS = 3600    # beat_yesterday fires only when yesterday >= 1h
+RITUAL_IDLE_RATIO = 0.30       # yesterday idle share above this -> break_the_idle
+RITUAL_BREAK_TARGET_MIN = 120  # break_the_idle target: 2h active
+RITUAL_NIGHT_TARGET_MIN = 60   # night_guard target: 1 deep hour after midnight
+RITUAL_NIGHT_HOURS = (0, 6)    # night_guard window (inclusive)
+RITUAL_LARK_HOURS = (5, 12)    # first_light window (inclusive)
+
+# ---------------------------------------------------------------- barter (P7)
+# Attention barter: metamorphosis stages are TRADED for real banked focus
+# minutes — no currency abstraction. Each stage is one step of the visual
+# form; stage N unlocks when barterStage == N-1 (barterStage = stages done).
+BARTER_OFFERS = [
+    {"stage": 1, "costMinutes": 300,  "name": "Perk up ears",
+     "desc": "A hint of life returns to my ears \u2014 attention, felt."},
+    {"stage": 2, "costMinutes": 600,  "name": "Grow whiskers",
+     "desc": "Whiskers grow sharp \u2014 I can read your focus now."},
+    {"stage": 3, "costMinutes": 900,  "name": "Shift coat",
+     "desc": "My coat takes on the colours of your rhythm."},
+    {"stage": 4, "costMinutes": 1500, "name": "Full form",
+     "desc": "The full form of your attention, made manifest."},
+]
+BARTER_EXPIRE_DAYS = 3         # an unconfirmed offer lapses quietly after 3 days
+
 # ---------------------------------------------------------------- chronotype (P5)
 CHRONO_MIN_DAYS = 3            # hourHistory days needed before metamorphosis
 CHRONO_REVIEW_DAYS = 7         # weekly fingerprint re-review (chronoWeekDate)
@@ -194,7 +221,10 @@ def load_config():
                "wakeDate": "", "wakeIdleAt": 0,
                "memoryMin": MEMORY_MIN_DEFAULT, "memoryMax": MEMORY_MAX_DEFAULT,
                "memoryDate": "", "memoryCount": 0, "epochFlags": [],
-               "chronoType": "larval", "chronoDate": "", "chronoWeekDate": ""}
+               "chronoType": "larval", "chronoDate": "", "chronoWeekDate": "",
+               "ritualDate": "", "ritualList": [], "ritualDone": [],
+               "ritualCloseDate": "",
+               "barterBank": 0, "barterStage": 0, "barterOfferDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -816,3 +846,153 @@ def best_streak(history, threshold=STREAK_MIN_SECS):
         if run > best:
             best = run
     return best
+
+
+# ---------------------------------------------------------------- rituals (P7)
+def _bucket_secs(hours, target):
+    """Seconds in one hour bucket, tolerant of int OR string hour keys."""
+    if not isinstance(hours, dict):
+        return 0
+    try:
+        target = int(target)
+    except (TypeError, ValueError):
+        return 0
+    total = 0
+    for k, v in hours.items():
+        try:
+            if int(k) == target and isinstance(v, (int, float)):
+                total += int(v)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _range_secs(hours, lo, hi):
+    """Seconds across hour buckets lo..hi inclusive (e.g. night 0-6)."""
+    return sum(_bucket_secs(hours, h) for h in range(lo, hi + 1))
+
+
+def ritual_progress(ritual, wellbeing, config, now=None):
+    """Live {current, done} for ONE ritual against today's REAL data.
+
+    Pure and shared by the pet engine and the dashboard card so they can
+    never disagree. current is in minutes; done is current >= target.
+    """
+    r = ritual or {}
+    kind = r.get("kind")
+    d = wellbeing or {}
+    today = datetime.date.fromtimestamp(now if now is not None else time.time()).isoformat()
+    apps = d.get("apps") if d.get("date") == today and isinstance(d.get("apps"), dict) else {}
+    hours = d.get("hourToday") if d.get("date") == today and isinstance(d.get("hourToday"), dict) else {}
+    hist = d.get("history") if isinstance(d.get("history"), dict) else {}
+    secs = 0
+    if kind in ("guard_hour", "first_light"):
+        h = int(r.get("hour") or -1)
+        if h >= 0:
+            secs = _bucket_secs(hours, h)
+    elif kind == "beat_yesterday":
+        secs = int(sum(v for v in apps.values() if isinstance(v, (int, float))))
+        if secs <= 0:
+            secs = int(hist.get(today, 0) or 0)
+    elif kind == "break_the_idle":
+        total = int(sum(v for v in apps.values() if isinstance(v, (int, float))))
+        secs = max(0, total - int(apps.get("Idle", 0) or 0))
+    elif kind == "night_guard":
+        secs = _range_secs(hours, *RITUAL_NIGHT_HOURS)
+    target = max(1, int(r.get("target") or 0))
+    current = int(secs) // 60
+    return {"current": current, "done": current >= target}
+
+
+def derive_rituals(wellbeing, focus_count, config):
+    """Today's personal rituals, derived from the user's OWN history.
+
+    Up to RITUAL_MAX_DAILY in priority order: guard_hour (historical best
+    hour with >= 1h avg), beat_yesterday (yesterday's total, >= 1h),
+    break_the_idle (yesterday > 30% idle), night_guard (night-owl chrono),
+    first_light (lark chrono). Each dict is {id, name, desc, target, current,
+    done, kind} — kind == id, plus "hour" for the hour-scoped kinds (frozen
+    at derivation so later data can't move the goalposts).
+    """
+    d = wellbeing or {}
+    hist = d.get("history") if isinstance(d.get("history"), dict) else {}
+    hour_hist = d.get("hourHistory") if isinstance(d.get("hourHistory"), dict) else {}
+    app_hist = d.get("appHistory") if isinstance(d.get("appHistory"), dict) else {}
+    today = datetime.date.today()
+    yday = (today - datetime.timedelta(days=1)).isoformat()
+    # yesterday's total + per-app map (fold the live apps map when the file
+    # itself still holds yesterday — same rule as _fold_today)
+    ysecs = int(hist.get(yday, 0) or 0)
+    yapps = dict(app_hist.get(yday)) if isinstance(app_hist.get(yday), dict) else {}
+    if d.get("date") == yday and isinstance(d.get("apps"), dict):
+        for a, s in d["apps"].items():
+            if isinstance(s, (int, float)):
+                ysecs += int(s)
+                yapps[a] = yapps.get(a, 0) + int(s)
+    chrono = str((config or {}).get("chronoType", "larval") or "larval")
+    profile = chronotype_profile(hour_hist)
+    peak = profile.get("peak_hour", -1)
+    peak_avg = profile.get("hours", {}).get(peak, 0) if peak >= 0 else 0
+
+    out = []
+    # 1. guard_hour: the user's own sharpest hour, protected
+    if peak >= 0 and peak_avg >= RITUAL_GUARD_MIN_SECS:
+        out.append({"id": "guard_hour", "kind": "guard_hour",
+                    "name": "Guard the hour",
+                    "desc": "Protect your %s-%s \u2014 it's your sharpest hour"
+                            % (hour_label(peak), hour_label(peak + 1)),
+                    "target": 30, "hour": peak})
+    # 2. beat_yesterday: match yesterday's own total
+    if ysecs >= RITUAL_BEAT_MIN_SECS:
+        out.append({"id": "beat_yesterday", "kind": "beat_yesterday",
+                    "name": "Match yesterday",
+                    "desc": "You did %.1fh yesterday \u2014 match it"
+                            % (ysecs / 3600.0),
+                    "target": max(30, int(ysecs) // 60)})
+    # 3. break_the_idle: reclaim a day that slipped into idle
+    if ysecs > 0 and int(yapps.get("Idle", 0) or 0) / ysecs > RITUAL_IDLE_RATIO:
+        out.append({"id": "break_the_idle", "kind": "break_the_idle",
+                    "name": "Break the idle",
+                    "desc": "Yesterday %d%% was idle \u2014 reclaim 2h"
+                            % (int(yapps.get("Idle", 0) or 0) * 100 // ysecs),
+                    "target": RITUAL_BREAK_TARGET_MIN})
+    # 4. night_guard: a night owl's deep hour after midnight
+    if chrono == "night_owl":
+        out.append({"id": "night_guard", "kind": "night_guard",
+                    "name": "Night guard",
+                    "desc": "Guard the witching hours \u2014 1 deep hour after midnight",
+                    "target": RITUAL_NIGHT_TARGET_MIN})
+    # 5. first_light: a lark's morning hour
+    if chrono == "lark":
+        lark_h = -1
+        for h in range(RITUAL_LARK_HOURS[0], RITUAL_LARK_HOURS[1] + 1):
+            if profile.get("hours", {}).get(h, 0) > profile.get("hours", {}).get(lark_h, 0):
+                lark_h = h
+        if lark_h >= 0:
+            out.append({"id": "first_light", "kind": "first_light",
+                        "name": "First light",
+                        "desc": "Rise with the sun \u2014 your %s hour awaits"
+                                % hour_label(lark_h),
+                        "target": 30, "hour": lark_h})
+    out = out[:RITUAL_MAX_DAILY]
+    # freeze live progress at derivation time (recomputed live later)
+    for r in out:
+        p = ritual_progress(r, d, config)
+        r["current"] = p["current"]
+        r["done"] = p["done"]
+    return out
+
+
+# ---------------------------------------------------------------- barter (P7)
+def barter_next_offer(stage):
+    """The next tradable form stage for a barterStage, or None when every
+    stage is done. barterStage = stages completed (0 = no stages yet)."""
+    try:
+        i = int(stage or 0)
+    except (TypeError, ValueError):
+        i = 0
+    if i < 0:
+        i = 0
+    if i >= len(BARTER_OFFERS):
+        return None
+    return dict(BARTER_OFFERS[i])
