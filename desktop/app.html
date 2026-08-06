@@ -365,10 +365,18 @@
     filter: drop-shadow(0 0 5px rgba(226, 162, 60, 0.45));
   }
   .ring.wilted .ring-fg { stroke: var(--danger); filter: drop-shadow(0 0 5px rgba(241, 120, 127, 0.4)); }
+  .ring.met .ring-fg { stroke: var(--ok); filter: drop-shadow(0 0 5px rgba(95, 221, 157, 0.45)); }
   .ring-em {
     position: absolute; inset: 0; display: grid; place-items: center;
     font-size: 30px; animation: breathe 2.4s ease-in-out infinite;
   }
+  /* daily focus goal card (dash rail) */
+  .goal { display: flex; align-items: center; gap: 14px; }
+  .goal-info { flex: 1; min-width: 0; }
+  .goal-title { font-size: 13.5px; font-weight: 600; }
+  .goal-sub { font-size: 11.5px; color: var(--text3); margin-top: 2px; }
+  .goal-sub b { color: var(--accent); font-family: "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .goal-sub.met { color: var(--ok); }
   .focus-pet-strip { transform: scale(0.72); animation-duration: var(--dur); }
   .fsess-info { flex: 1; min-width: 0; }
   .fsess-title { font-size: 13.5px; font-weight: 600; }
@@ -1638,6 +1646,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
                 <div class="pet-state" id="railState">no sessions</div>
               </div>
             </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Today's goal</div>
+              <div id="goalCard"></div>
+            </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
               <div class="stat think"><b id="stThink">0</b><span>thinking</span></div>
@@ -2759,7 +2771,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           '</div>';
       }
 
-      function renderCompanionToday(wb) {
+      function renderCompanionToday(wb, g) {
         var el = document.getElementById("companionToday");
         if (!el) return;
         if (!wb || !wb.length) {
@@ -2770,10 +2782,20 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         wb.forEach(function (w) { total += w.seconds; });
         var h = Math.floor(total / 3600), m = Math.round((total % 3600) / 60);
         if (m === 60) { h++; m = 0; }
+        var goal = g || {};
+        var goalLine = "";
+        if (goal.goalMin) {
+          var gHave = goal.todaySeconds || 0;
+          goalLine = goal.met
+            ? '<div><span class="cmp-k">Goal</span><b class="cmp-v met">met \u2713</b></div>'
+            : '<div><span class="cmp-k">Goal</span><b class="cmp-v dim">' +
+              Math.floor(gHave / 60) + "/" + goal.goalMin + 'm</b></div>';
+        }
         el.innerHTML =
           '<div class="cmp">' +
           '<div><span class="cmp-k">Focus today</span><b class="cmp-v">' + (h > 0 ? h + "h " : "") + m + 'm</b></div>' +
           '<div><span class="cmp-k">Top app</span><b class="cmp-v dim">' + esc(wb[0].app) + '</b></div>' +
+          goalLine +
           '</div>';
       }
 
@@ -2785,8 +2807,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         api.get_weekly_wrapped().then(function (w) {
           if (w && typeof w === "object") renderCompanionStats(w);
         }).catch(function () {});
+        var goal = null;
+        api.get_goal_state().then(function (g) { goal = g; }).catch(function () {});
         api.get_wellbeing().then(function (wb) {
-          if (Array.isArray(wb)) renderCompanionToday(wb);
+          if (Array.isArray(wb)) renderCompanionToday(wb, goal);
         }).catch(function () {});
       }
 
@@ -2889,6 +2913,48 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         if (!api) return;
         api.get_wellbeing().then(function (list) {
           if (Array.isArray(list)) renderWellbeing(list);
+        }).catch(function () {});
+      }
+
+      /* ---------- daily focus goal ---------- */
+      var _goalSig = "";
+      function renderGoal(g) {
+        var el = document.getElementById("goalCard");
+        if (!el) return;
+        var sig = JSON.stringify(g || {});
+        if (sig === _goalSig && el.childElementCount) return;
+        _goalSig = sig;
+        g = g || {};
+        var goalSec = (g.goalMin || 0) * 60;
+        var have = g.todaySeconds || 0;
+        var prog = goalSec > 0 ? Math.max(0, Math.min(1, have / goalSec)) : 0;
+        var pct = Math.round(prog * 100);
+        var offset = RING_C * (1 - prog);
+        var met = !!g.met;
+        var mins = Math.floor(have / 60);
+        var status = met
+          ? "Goal met \u2014 " + (g.streak || 0) + " day streak"
+          : "<b>" + mins + "</b>/" + (g.goalMin || 0) + " min \u00b7 keep going";
+        el.innerHTML =
+          '<div class="goal">' +
+          '<div class="ring-wrap">' +
+          '<svg class="ring' + (met ? " met" : "") + '" viewBox="0 0 78 78" role="img" aria-label="Daily goal ' + pct + '%">' +
+          '<circle class="ring-bg" cx="39" cy="39" r="' + RING_R + '"/>' +
+          '<circle class="ring-fg" cx="39" cy="39" r="' + RING_R + '" stroke-dasharray="' + RING_C.toFixed(1) + '" stroke-dashoffset="' + offset.toFixed(1) + '"/>' +
+          '</svg>' +
+          '<span class="ring-em" aria-hidden="true">' + (met ? "\ud83c\udfc6" : "\ud83c\udfaf") + '</span>' +
+          '</div>' +
+          '<div class="goal-info">' +
+          '<div class="goal-title">' + fmtDur(goalSec) + (met ? " \u2713" : " daily goal") + '</div>' +
+          '<div class="goal-sub' + (met ? " met" : "") + '">' + status + '</div>' +
+          '</div>' +
+          '</div>';
+      }
+
+      function refreshGoal() {
+        if (!api) return;
+        api.get_goal_state().then(function (g) {
+          if (g && typeof g === "object") renderGoal(g);
         }).catch(function () {});
       }
 
@@ -3055,7 +3121,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           renderWeekApps(DEMO_WEEK_APPS);
           renderMilestones(DEMO_LOGS);
           renderCompanionStats(DEMO_WRAPPED);
-          renderCompanionToday(DEMO_WB);
+          renderCompanionToday(DEMO_WB, DEMO_GOAL);
+          renderGoal(DEMO_GOAL);
           renderHeatmap(DEMO_WB_HISTORY_90);
           renderPeaks(DEMO_PEAKS);
           return;
@@ -3089,6 +3156,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         refreshInsights();
         refreshFocusSession();
         refreshProfile();
+        refreshGoal();
         refreshWrapped();
         refreshSparkline();
         refreshWeekApps();
@@ -3132,6 +3200,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         todaySeconds: 3600, topApp: { app: "VS Code", seconds: 7200 }
       };
       var DEMO_FOCUS = { active: false, startedAt: 0, targetMin: 25, wilted: false, app: "", progress: 0 };
+      var DEMO_GOAL = { goalMin: 120, todaySeconds: 3600, met: false, streak: 2 };
       var DEMO_PROFILE = { level: 7, xp: 64, xpNext: 400, xpPct: 0.16, mood: "happy", streak: 4,
         stage: { id: "stage2", name: "Growing", emoji: "\ud83c\udf31" } };
       var DEMO_WRAPPED = {
@@ -3270,6 +3339,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshInsights, 15000);
       setInterval(function () { if (state.view === "focus") refreshFocusSession(); }, 2500);
       setInterval(refreshProfile, 10000);
+      setInterval(refreshGoal, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

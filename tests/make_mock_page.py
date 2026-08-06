@@ -121,6 +121,9 @@ MOCK = r"""<script>
       get_pet_profile: function () {
         return Promise.resolve({ level: 7, xp: 64, xpNext: 400, xpPct: 0.16, mood: "happy", streak: 4 });
       },
+      get_goal_state: function () {
+        return Promise.resolve({ goalMin: 120, todaySeconds: 3600, met: false, streak: 4 });
+      },
       get_weekly_wrapped: function () {
         return Promise.resolve({
           days: 7, weekSeconds: 32400, prevWeekSeconds: 25200,

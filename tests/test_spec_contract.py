@@ -20,7 +20,7 @@ ALL_METHODS = {
     "get_config", "get_previews", "get_sessions", "get_logs",    "get_wellbeing",
     "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "get_pet_profile",
-    "get_weekly_wrapped", "get_week_apps", "get_focus_peaks",
+    "get_goal_state", "get_weekly_wrapped", "get_week_apps", "get_focus_peaks",
     "next_pet", "prev_pet", "save_config", "hide_pet", "show_pet",
     "hide_control", "quit",
 }

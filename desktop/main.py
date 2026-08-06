@@ -273,7 +273,8 @@ def pet_states(pet):
 
 # ---------------------------------------------------------------- config
 def load_config():
-    default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50}
+    default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50,
+               "goalMin": 120, "lastGoalDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -386,24 +387,39 @@ def _write_locked_fd(fd, data):
     os.fsync(fd)
 
 
-def streak_from_history(history):
-    """Consecutive days ending today or yesterday with >= 30min focus.
+def streak_from_history(history, threshold=30 * 60):
+    """Consecutive days ending today or yesterday with >= `threshold` focus.
 
     Shared by the pet process (PetEngine._streak_days) and the control/web
     process (ControlApi.get_pet_profile) so the rule lives in one place.
-    Today with < 30min doesn't break the chain — the day isn't over yet.
+    Today with < threshold doesn't break the chain — the day isn't over yet.
+    The threshold is per-day seconds; the focus streak passes 30min, the
+    daily-goal streak passes goalMin*60.
     """
     today = datetime.date.today()
     streak = 0
     for back in range(0, 400):
         day = (today - datetime.timedelta(days=back)).isoformat()
-        if int(history.get(day, 0)) >= 30 * 60:
+        if int(history.get(day, 0)) >= threshold:
             streak += 1
         elif back == 0:
             continue  # today may still be building; check yesterday
         else:
             break
     return streak
+
+
+def _fold_today(history, d):
+    """Fold a wellbeing dict's live running total (today's `apps` map) into a
+    history copy, so a fresh session counts immediately. Returns a new dict;
+    the caller's history is never mutated."""
+    today = datetime.date.today().isoformat()
+    if d and d.get("date") == today and isinstance(d.get("apps"), dict):
+        running = int(sum(v for v in d["apps"].values() if isinstance(v, (int, float))))
+        if running > 0:
+            history = dict(history)
+            history[today] = history.get(today, 0) + running
+    return history
 
 
 def evolution_stage(level):
@@ -835,6 +851,9 @@ class PetEngine:
         self.focus_target_min = int(self.cfg.get("focusMin", 25))
         self.focus_wilted = False
         self._focus_app = ""
+        # daily focus goal (config: goalMin minutes; lastGoalDate = last day met)
+        self.goal_min = max(1, int(self.cfg.get("goalMin", 120)))
+        self._last_goal_date = str(self.cfg.get("lastGoalDate", "") or "")
         # pet growth (XP / level / mood)
         self.xp = int(self.cfg.get("xp", 0))
         self.level = int(self.cfg.get("level", 1))
@@ -1062,6 +1081,34 @@ class PetEngine:
     def _streak_days(self):
         """Consecutive days (ending today or yesterday) with >= 30min focus."""
         return streak_from_history(self._history)
+
+    def _goal_tick(self):
+        """Daily focus goal: celebrate once per day when today's total passes
+        goalMin. lastGoalDate in config guards against re-awarding after a
+        restart (this check runs every 0.5s tick, so the guard must be the
+        date in config, not in-memory state)."""
+        goal_secs = self.goal_min * 60
+        if goal_secs <= 0 or self._last_goal_date == self._wb_date:
+            return
+        total = int(sum(v for v in self._wb.values()
+                        if isinstance(v, (int, float)))) if self._wb else 0
+        if total < goal_secs:
+            return
+        self._last_goal_date = self._wb_date
+        try:
+            c = load_config()
+            c["lastGoalDate"] = self._wb_date
+            save_config(c)
+        except Exception:
+            pass
+        now = time.time()
+        self._award_xp(20, "goal")
+        self.mood = "happy"
+        self.bubble_text = "Daily goal met!"
+        self.bubble_until = now + 4
+        self.attention_until = now + 3
+        self.cast = {"until": now + 1.0, "started": now}  # celebration cast flash
+        self._log("goal", goalMin=self.goal_min)
 
     def _rollover_wellbeing(self):
         """The day changed: fold the finished day's total into history and
@@ -1678,6 +1725,8 @@ class PetEngine:
         if isinstance(c.get("breakMin"), int):
             self.break_min = max(0, int(c["breakMin"]))
             self.cfg["breakMin"] = self.break_min
+        if isinstance(c.get("goalMin"), int):
+            self.goal_min = max(1, int(c["goalMin"]))
         if c.get("alwaysOnTop") is not None and bool(c["alwaysOnTop"]) != bool(self.cfg.get("alwaysOnTop", True)):
             self.set_topmost(bool(c["alwaysOnTop"]))
             self.cfg["alwaysOnTop"] = bool(c["alwaysOnTop"])
@@ -1806,6 +1855,8 @@ class PetEngine:
         if self.os_active:
             self._mood_tick()
         self._track_app_time()
+        # daily focus goal runs last so its bubble wins over tool/state lines
+        self._goal_tick()
 
 
 def random():
@@ -2207,6 +2258,32 @@ class ControlApi:
                 "stage": {"id": stage["id"], "name": stage["name"],
                            "emoji": stage["emoji"]}}
 
+    def get_goal_state(self):
+        """Daily focus goal state for the dashboard ring.
+
+        Returns {goalMin, todaySeconds, met, streak} — todaySeconds folds the
+        live running total (same rule as get_wellbeing_history) and streak is
+        consecutive days (ending today or yesterday) that hit goalMin*60.
+        """
+        goal_min = max(1, int(load_config().get("goalMin", 120)))
+        d = None
+        for _ in range(3):  # wellbeing.json is rewritten non-atomically every 20s
+            try:
+                with open(WELLBEING_FILE, encoding="utf-8") as fh:
+                    d = json.load(fh)
+                break
+            except OSError:
+                time.sleep(0.01)
+            except Exception:
+                break
+        history = d.get("history") if (d and isinstance(d.get("history"), dict)) else {}
+        history = _fold_today(history, d)
+        today = datetime.date.today().isoformat()
+        today_seconds = int(history.get(today, 0))
+        return {"goalMin": goal_min, "todaySeconds": today_seconds,
+                "met": today_seconds >= goal_min * 60,
+                "streak": streak_from_history(history, goal_min * 60)}
+
     def get_weekly_wrapped(self):
         """'Your Week in Focus' summary: totals, best day, top app, streak,
         XP earned — rendered client-side; copy-to-clipboard share text."""
@@ -2404,7 +2481,7 @@ _WEB_METHODS = [
     "get_config", "get_previews", "get_sessions", "get_logs",
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "get_pet_profile",
-    "get_weekly_wrapped", "get_week_apps", "get_focus_peaks",
+    "get_goal_state", "get_weekly_wrapped", "get_week_apps", "get_focus_peaks",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
