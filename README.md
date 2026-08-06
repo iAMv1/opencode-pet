@@ -29,7 +29,7 @@
 
 A non-intrusive pet that reacts to real events - no polling loop. It reads OpenCode session status and OS activity the moment things change, with a safety net so it never misses a beat.
 
-- **Six pixel pets** - real sprite-sheet frame animation
+- **Seven pixel pets** - real sprite-sheet frame animation
 - **Transparent window** - zero background, just the pet at 30 FPS
 - **Works with any app** - not just OpenCode
 - **Grows with you** - XP, levels and streaks from focused work

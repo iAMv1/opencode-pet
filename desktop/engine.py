@@ -1,4 +1,4 @@
-"""PetEngine: physics, sprite slicing, state resolution, focus/growth logic.
+﻿"""PetEngine: physics, sprite slicing, state resolution, focus/growth logic.
 
 Renders via win32.PetWindow. OS activity (last_input_ms/foreground_app) is
 resolved through the desktop.main namespace at call time so the test suite's
@@ -63,7 +63,7 @@ XP_EPOCH = 25               # epoch crossings ARE earned milestones
 EPOCH_BUBBLE_SECS = 5.0     # epoch celebration bubble lifetime
 
 # ---------------------------------------------------------------- chronotype (P5)
-XP_METAMORPH = 50           # metamorphosis into a chrono gene — a real milestone
+XP_METAMORPH = 50           # metamorphosis into a chrono gene â€” a real milestone
 CHRONO_BUBBLE_SECS = 5.0    # metamorph / drift bubble lifetime
 
 # ---------------------------------------------------------------- day-body (P6)
@@ -75,7 +75,7 @@ XP_RITUAL = 15              # a completed personal ritual IS earned, not spam
 RITUAL_BUBBLE_SECS = 5.0    # ritual completion / day-close bubble lifetime
 
 # ---------------------------------------------------------------- barter (P7)
-XP_BARTER = 20              # a traded form stage — the user's attention, paid
+XP_BARTER = 20              # a traded form stage â€” the user's attention, paid
 BARTER_BUBBLE_SECS = 5.0    # barter ask / ceremony bubble lifetime
 BARTER_SHIMMER_SECS = 90    # periodic cast shimmer between stages (visual only)
 
@@ -214,9 +214,9 @@ class PetEngine:
         self._last_wb_save = 0.0
         self._history = {}   # date "YYYY-MM-DD" -> total focused seconds (past days)
         self._app_history = {}  # date "YYYY-MM-DD" -> {app: seconds} (per-day breakdown)
-        self._hour_today = {}   # today's {hour: seconds} — folded into _hour_history at rollover
+        self._hour_today = {}   # today's {hour: seconds} â€” folded into _hour_history at rollover
         self._hour_history = {}  # date "YYYY-MM-DD" -> {hour: seconds} (per-day, per-hour)
-        self._font = None  # lazy font cache (truetype() is ~5ms — load once)
+        self._font = None  # lazy font cache (truetype() is ~5ms â€” load once)
 
     def _init_focus(self):
         # focus sessions (inverse-Tamagotchi)
@@ -268,7 +268,7 @@ class PetEngine:
         self._chrono_glow_cache = {}   # gene aura -> prerendered glow
 
     def _init_embody(self):
-        # P6: the pet's body IS the dashboard — day-health shown as aura +
+        # P6: the pet's body IS the dashboard â€” day-health shown as aura +
         # mood instead of meters. Re-derived every EMBODY_TICK_SECS (and on
         # goal/focus events); aura overlay only, no sprite changes.
         self._embody_state = "flow"
@@ -290,7 +290,7 @@ class PetEngine:
         self._dayclose_date = str(self.cfg.get("ritualCloseDate", "") or "")
 
     def _init_barter(self):
-        # P7: attention barter — banked focus minutes traded for form stages.
+        # P7: attention barter â€” banked focus minutes traded for form stages.
         # bank/stage/offerDate live in config (survive restarts); the seconds
         # accumulator flushes whole minutes to the bank at most once/min.
         self._barter_bank = int(self.cfg.get("barterBank", 0) or 0)
@@ -301,9 +301,9 @@ class PetEngine:
         self._barter_glow_cache = {}   # stage -> prerendered radiance glow
 
     def _log(self, kind, **data):
-        """Append one JSON line to THIS pet's activity log — one pet, one memory."""
+        """Append one JSON line to THIS pet's activity log â€” one pet, one memory."""
         try:
-            log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"])
+            log_path = store.activity_log_path(self.pet["id"])
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
             # P10: cap the log (size/age). At most once per day, in-process and
@@ -611,7 +611,6 @@ class PetEngine:
         except Exception:
             pass
         self.mood = "happy"
-        self.mood = "happy"
         self.bubble_text = "Daily goal met!"
         self.bubble_until = now + GOAL_BUBBLE_SECS
         self.attention_until = now + FOCUS_ATTENTION_SECS
@@ -673,7 +672,7 @@ class PetEngine:
         if dt <= 0:
             return
         # Laptop sleep / lock screen can pause the process for hours; a giant
-        # delta is a gap, not usage — crediting it would inflate one app's
+        # delta is a gap, not usage â€” crediting it would inflate one app's
         # wellbeing total and poison the daily stats.
         if dt > store.SLEEP_GAP_SECS:
             return
@@ -684,7 +683,7 @@ class PetEngine:
             if app in ("Explorer", "Program Manager"):
                 app = "Desktop"
             self._memory_work = getattr(self, "_memory_work", 0.0) + dt  # work time feeds recalls
-            # P7: banked attention — active (non-idle) seconds accrue toward
+            # P7: banked attention â€” active (non-idle) seconds accrue toward
             # the barter bank; the engine flushes whole minutes later
             self._barter_acc = getattr(self, "_barter_acc", 0.0) + dt
         self._wb[app] = self._wb.get(app, 0) + dt
@@ -843,7 +842,7 @@ class PetEngine:
         self.walk_factor = max(0.0, min(1.0, pct / 100.0))
 
     def poke(self):
-        """Single click — a small surprised hop. Physics does the arc."""
+        """Single click â€” a small surprised hop. Physics does the arc."""
         p = self.phys
         if p["grounded"] and not self.dragging:
             p["vy"] = -PHYS_POKE_VY
@@ -853,7 +852,7 @@ class PetEngine:
             self._log("poke")
 
     def jump(self):
-        """Double click — a real leap."""
+        """Double click â€” a real leap."""
         if not self.dragging:
             self.phys["vy"] = -PHYS_JUMP_VY
             self.phys["grounded"] = False
@@ -891,11 +890,11 @@ class PetEngine:
             return "idle"
         # BUG-3: use preserved stale emotion before falling back to busy/idle.
         # When nothing is driving the pet (no active session, OS idle), it
-        # settles into a calm IDLE rest instead of the restless "waiting" gait —
+        # settles into a calm IDLE rest instead of the restless "waiting" gait â€”
         # so "screen idle => pet idle", matching how a companion should behave.
         # P9: a cursor that has dwelled near the pet makes it glance over
         # (brief thinking-flip); and after a long idle (wanderIdle on) it sits
-        # in the "waiting" pose instead of pacing — an energy save.
+        # in the "waiting" pose instead of pacing â€” an energy save.
         if getattr(self, "_look_until", 0.0) and time.time() < self._look_until:
             return "thinking"
         if not self.os_active and getattr(self, "cfg", {}).get("wanderIdle", True):
@@ -971,7 +970,7 @@ class PetEngine:
             p["t"] = 0
             # Only a pet that is actively engaged (working/thinking, or any
             # foreground activity) prowls around. When the screen has been idle
-            # the pet stays put — no random roaming while it is resting.
+            # the pet stays put â€” no random roaming while it is resting.
             working = self._state() in ("busy", "thinking") or self.os_active
             chance = (WALK_CHANCE_ACTIVE if working else 0.0) * self.walk_factor
             if random.random() < chance:
@@ -1002,11 +1001,11 @@ class PetEngine:
         cglow = self._chrono_glow()
         if cglow:
             canvas.alpha_composite(cglow)
-        # P6: embodied day-state aura on top — the pet LOOKS like your day
+        # P6: embodied day-state aura on top â€” the pet LOOKS like your day
         eglow = self._embody_glow()
         if eglow:
             canvas.alpha_composite(eglow)
-        # P7: attention-barter radiance — glow tier per traded form stage
+        # P7: attention-barter radiance â€” glow tier per traded form stage
         bglow = self._barter_glow()
         if bglow:
             canvas.alpha_composite(bglow)
@@ -1147,7 +1146,7 @@ class PetEngine:
 
     # personality reactions keyed on state transitions (error -> empathy,
     # completion after work -> cheer). Local only; keeps the pet alive.
-    # P9: agent-mirror copy — the pet comments on the USER's agent work, not
+    # P9: agent-mirror copy â€” the pet comments on the USER's agent work, not
     # its own. "thinking" bubbles swap in the mirror lines; the error concern
     # fires at most once per 15 min (cooldown, not spam).
     AGENT_MIRROR_LINES = [
@@ -1170,67 +1169,67 @@ class PetEngine:
         "Perching above %s \u2014 carry on",
     ]
     REACTIONS = {        "error": [
-            "Ouch — that one stung. Want me to watch the retry? 👁",
-            "Exit %d — rough. I'll stay by your side. 💙",
+            "Ouch â€” that one stung. Want me to watch the retry? ðŸ‘",
+            "Exit %d â€” rough. I'll stay by your side. ðŸ’™",
             "Bounced hard. I'm right here.",
-            "That one blipped — I've got you.",
+            "That one blipped â€” I've got you.",
         ],
         "success": [
-            "Nice! Done. ✨",
-            "Look at you go — nailed it! 🎉",
+            "Nice! Done. âœ¨",
+            "Look at you go â€” nailed it! ðŸŽ‰",
             "Clean exit. That's how it's done.",
             "Smooth. Another win.",
         ],
     }
 
-    # Personality bubbles keyed on state — richer than REACTIONS because they
+    # Personality bubbles keyed on state â€” richer than REACTIONS because they
     # run on every transition (not just first-seen), with a 6s decay window
     # so the same line doesn't re-fire every tick while the state persists.
     BUBBLES = {
         "thinking": [
-            "Hmm… thinking about it 🤔",
-            "Processing… patience ✨",
-            "Reasoning through this…",
-            "Connecting the dots 🔮",
-            "Almost there…",
-            "Pondering…",
+            "Hmmâ€¦ thinking about it ðŸ¤”",
+            "Processingâ€¦ patience âœ¨",
+            "Reasoning through thisâ€¦",
+            "Connecting the dots ðŸ”®",
+            "Almost thereâ€¦",
+            "Ponderingâ€¦",
         ],
         "busy": [
-            "On it 🔧",
+            "On it ðŸ”§",
             "Working the gears",
             "In the flow",
             "Making moves",
         ],
         "waiting": [
-            "Waiting on you…",
+            "Waiting on youâ€¦",
             "Still here whenever you are",
-            "Standing by 👀",
+            "Standing by ðŸ‘€",
             "Whenever you're ready",
             "Not going anywhere",
         ],
         "error": [
-            "That one hurt 😣",
-            "Oof — rough exit",
-            "Hang on, retry? 💪",
+            "That one hurt ðŸ˜£",
+            "Oof â€” rough exit",
+            "Hang on, retry? ðŸ’ª",
             "Tough one. I'm still here.",
         ],
         "success": [
-            "Nice — done! 🎉",
-            "Crisp. Nailed it ✨",
+            "Nice â€” done! ðŸŽ‰",
+            "Crisp. Nailed it âœ¨",
             "Another one in the bag",
             "Smooth. Another win.",
-            "Look at that — clean.",
+            "Look at that â€” clean.",
         ],
         "idle": [
-            "Just vibing 😌",
+            "Just vibing ðŸ˜Œ",
             "Chilling for now",
             "All quiet on my end",
             "Ready when you are",
         ],
         "failed": [
-            "That one hurt 😣",
-            "Oof — rough exit",
-            "Hang on, retry? 💪",
+            "That one hurt ðŸ˜£",
+            "Oof â€” rough exit",
+            "Hang on, retry? ðŸ’ª",
         ],
     }
 
@@ -1256,7 +1255,7 @@ class PetEngine:
             if st == "error" and (not prev_top or prev_top.get("state") != "error"):
                 now = time.time()
                 if mirror and now - self._last_agent_error >= AGENT_ERROR_COOLDOWN_SECS:
-                    # P9: the pet's concerned line — once per 15 min, and the
+                    # P9: the pet's concerned line â€” once per 15 min, and the
                     # error state itself is already mirrored by the status dot.
                     self._last_agent_error = now
                     self.bubble_text = random.choice(self.AGENT_ERROR_LINES)
@@ -1272,7 +1271,7 @@ class PetEngine:
                 self.bubble_until = time.time() + 4
                 self._award_xp(XP_COMPLETE_BONUS, "complete")
                 if mirror:
-                    # P9: mirror the win — happy mood + a brief cast flash.
+                    # P9: mirror the win â€” happy mood + a brief cast flash.
                     self.mood = "happy"
                     now = time.time()
                     self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
@@ -1310,7 +1309,7 @@ class PetEngine:
         if c.get("chimes") is not None:
             self.chimes_on = bool(c["chimes"])
             self.cfg["chimes"] = self.chimes_on
-        # P9: companion-presence toggles — applied live, like the other
+        # P9: companion-presence toggles â€” applied live, like the other
         # behavior switches (the control window writes them via save_config).
         for key in ("reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"):
             if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
@@ -1329,6 +1328,12 @@ class PetEngine:
                 pass
         if isinstance(c.get("goalMin"), int):
             self.goal_min = store.goal_minutes(c)
+            self.cfg["goalMin"] = self.goal_min
+        # P3: pomodoro + P4: memory budget settings â€” sync into self.cfg so a
+        # later engine save (boot-stale snapshot) can't revert them.
+        for key in ("pomoMin", "pomoShort", "pomoLong", "memoryMin", "memoryMax"):
+            if isinstance(c.get(key), int):
+                self.cfg[key] = max(1, int(c[key]))
         if c.get("alwaysOnTop") is not None and bool(c["alwaysOnTop"]) != bool(self.cfg.get("alwaysOnTop", True)):
             self.set_topmost(bool(c["alwaysOnTop"]))
             self.cfg["alwaysOnTop"] = bool(c["alwaysOnTop"])
@@ -1415,7 +1420,7 @@ class PetEngine:
         self._barter_tick(now)
         # P8: lifestyle alerts (churn / idle-fog / Sunday week-end review)
         self._alert_tick(now)
-        # P9: companion presence — typing bursts / cursor dwell are the
+        # P9: companion presence â€” typing bursts / cursor dwell are the
         # cheapest, then perch chatter on app change. Ran after the alert so
         # the alert's once-a-day line still wins the bubble.
         self._typing_tick(now)
@@ -1478,11 +1483,11 @@ class PetEngine:
     def _perch_tick(self, now):
         """Workflow perch: when the foreground app changes, the pet
         occasionally bubbles an app-aware line (max 1/30min) and may step a
-        few paces (x direction flip, 20%) — light company, no shame."""
+        few paces (x direction flip, 20%) â€” light company, no shame."""
         app = self.os_app
         prev = self._perch_app
         self._perch_app = app
-        # first observation is the baseline — the pet never chatters at boot
+        # first observation is the baseline â€” the pet never chatters at boot
         if not app or not prev or app == prev or app in ("Explorer", "Program Manager", "Desktop"):
             return
         if self.cfg.get("perchChatter", True) \
@@ -1531,7 +1536,7 @@ class PetEngine:
             if line:
                 self.bubble_text = line
                 self.bubble_until = now + PERSONALITY_BUBBLE_SECS
-        # 3. No active sessions, OS is active → show foreground app.
+        # 3. No active sessions, OS is active â†’ show foreground app.
         elif not fresh and self.os_active and self.os_app and self.os_app not in ("Explorer", "Program Manager", ""):
             self.bubble_text = "In " + self.os_app
             self.bubble_until = now + APP_BUBBLE_SECS
@@ -1548,7 +1553,7 @@ class PetEngine:
         if state_key == last and now - last_at < ttl:
             return None
         lines = self.BUBBLES.get(state_key) or []
-        # P9: agent mirror — "thinking" is the agent's thinking, so its lines
+        # P9: agent mirror â€” "thinking" is the agent's thinking, so its lines
         # speak about the user's agent when agentMirror is on.
         if state_key == "thinking" and self.cfg.get("agentMirror", True):
             lines = self.AGENT_MIRROR_LINES
@@ -1678,7 +1683,7 @@ class PetEngine:
     def _read_memory_events(self, limit=200):
         """Last N events from THIS pet's activity log (one pet, one memory)."""
         try:
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+            with open(store.activity_log_path(self.pet["id"]),
                       encoding="utf-8") as fh:
                 lines = fh.readlines()
             out = []
@@ -1743,7 +1748,7 @@ class PetEngine:
 
     def _memory_tick(self, now):
         """Episodic recall: after memoryMin minutes of WORK time (jittered),
-        bubble a real past event. No XP — a bubble and a brief mood shimmer
+        bubble a real past event. No XP â€” a bubble and a brief mood shimmer
         only. Max memoryMax recalls per day (config-guarded daily counter)."""
         if not self.os_active:
             return
@@ -1781,7 +1786,7 @@ class PetEngine:
         self._shimmer_until = now + MEMORY_SHIMMER_SECS
 
     def _focus_count(self):
-        """All-time completed focus sessions for THIS pet (cached 60s — the
+        """All-time completed focus sessions for THIS pet (cached 60s â€” the
         log read is the only slightly-pricey part of the epoch check)."""
         now = time.time()
         if now - self._last_fc_read < 60:
@@ -1789,7 +1794,7 @@ class PetEngine:
         self._last_fc_read = now
         n = 0
         try:
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+            with open(store.activity_log_path(self.pet["id"]),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -1804,7 +1809,7 @@ class PetEngine:
 
     def _epoch_tick(self, now):
         """Life-transition markers: when a pure threshold in the data crosses,
-        celebrate ONCE (25 XP — these ARE earned, not spam) and record the
+        celebrate ONCE (25 XP â€” these ARE earned, not spam) and record the
         epoch id in config so it can never re-fire."""
         flags = list(self.cfg.get("epochFlags") or [])
         crossed = store.evaluate_epochs(self._history, self._hour_history,
@@ -1864,6 +1869,10 @@ class PetEngine:
             self._metamorph(store.chronotype_class(profile), profile, now)
             return
         if self._chrono_review_due(today):
+            # floor: with pruned hourHistory (long absence) days can be 0 â€”
+            # never drift from an empty fingerprint
+            if profile["days"] < store.CHRONO_MIN_DAYS:
+                return
             self._chrono_review(profile, now)
 
     def _metamorph(self, cls, profile, now):
@@ -1873,7 +1882,7 @@ class PetEngine:
         self.chrono_date = time.strftime("%Y-%m-%d")
         self.chrono_week_date = time.strftime("%Y-%m-%d")  # first review in 7 days
         self._save_chrono()
-        genes = store.gene_manifest(cls, profile)
+        genes = store.gene_manifest(cls)
         self._award_xp(XP_METAMORPH, "metamorph")
         self.mood = "happy"
         self.bubble_text = store.chrono_readout(cls, profile)
@@ -1885,7 +1894,7 @@ class PetEngine:
 
     def _chrono_review(self, profile, now):
         """Weekly fingerprint re-read. chronoWeekDate advances every review;
-        a class change fires a drift event (bubble + log + new aura) — at
+        a class change fires a drift event (bubble + log + new aura) â€” at
         most one per week because the next review is a week away."""
         cls = store.chronotype_class(profile)
         prev = self.chrono_type
@@ -1901,7 +1910,7 @@ class PetEngine:
             self._save_chrono()  # review happened, nothing drifted
 
     def _chrono_glow(self):
-        """Radial aura behind the pet for the active chrono gene — visual
+        """Radial aura behind the pet for the active chrono gene â€” visual
         overlay only, the sprite sheet never changes. Dormant outside the
         gene's hour window (night owl glows 0-6h, lark at dawn, ...)."""
         try:
@@ -1941,7 +1950,7 @@ class PetEngine:
         today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
         n = 0
         try:
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+            with open(store.activity_log_path(self.pet["id"]),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -1958,7 +1967,7 @@ class PetEngine:
 
     def _embody_tick(self, now, force=False):
         """Re-derive the embodied day state (every 30s, plus force on
-        goal/focus events) and apply the visual overlay — aura colour/glow
+        goal/focus events) and apply the visual overlay â€” aura colour/glow
         + a bubble-less mood hint. No sprite changes: the pet LOOKS like the
         day through the aura surface only."""
         if not force and now - getattr(self, "_last_embody", 0.0) < EMBODY_TICK_SECS:
@@ -2028,7 +2037,7 @@ class PetEngine:
 
     # ------------------------------------------------------- rituals (P7)
     def _ritual_wellbeing(self):
-        """The engine's live wellbeing shape — the same dict shape the
+        """The engine's live wellbeing shape â€” the same dict shape the
         dashboard reads from disk, so derive/progress can't disagree."""
         return {"date": self._wb_date, "apps": self._wb or {},
                 "hourToday": getattr(self, "_hour_today", {}) or {},
@@ -2050,7 +2059,7 @@ class PetEngine:
     def _ritual_tick(self, now):
         """Personal rituals: derive fresh each day (ritualDate guard, survives
         restarts), track live progress against REAL data, celebrate each
-        completion once (+15 XP — earned, not spam), and close the day quietly
+        completion once (+15 XP â€” earned, not spam), and close the day quietly
         at 22:00 with no punishment for what went unfinished."""
         today = time.strftime("%Y-%m-%d")
         if str(self.cfg.get("ritualDate") or "") != today:
@@ -2082,7 +2091,7 @@ class PetEngine:
                 break
         # quiet end-of-day close: only when the day's rituals exist, the hour
         # has passed 22:00, and at least one went unfinished. No XP, no chime.
-        # Defers while a substantive bubble (dream/goal/celebration) is live —
+        # Defers while a substantive bubble (dream/goal/celebration) is live â€”
         # a quiet line never interrupts a moment.
         if time.localtime(now).tm_hour >= 22 \
                 and self._dayclose_date != today \
@@ -2113,7 +2122,7 @@ class PetEngine:
     def _barter_pay(self):
         """Confirm the standing offer: deduct banked minutes, advance one form
         stage, celebrate (20 XP + ceremony). Returns False when the offer is
-        not tradable yet — the dashboard only shows the button when it is."""
+        not tradable yet â€” the dashboard only shows the button when it is."""
         offer = store.barter_next_offer(self._barter_stage)
         if not offer or self._barter_bank < offer["costMinutes"]:
             return False
@@ -2135,7 +2144,7 @@ class PetEngine:
     def _barter_tick(self, now):
         """Attention barter: flush accrued seconds to the bank, run the offer
         lifecycle (ask when the bank covers the next stage, expire quietly
-        after BARTER_EXPIRE_DAYS with the bank kept — no punishment), and
+        after BARTER_EXPIRE_DAYS with the bank kept â€” no punishment), and
         shimmer the form aura periodically between stages."""
         acc = getattr(self, "_barter_acc", 0.0)
         if acc >= 60.0:
@@ -2156,7 +2165,7 @@ class PetEngine:
                 except (TypeError, ValueError):
                     days = store.BARTER_EXPIRE_DAYS
             if od and od != today and days >= store.BARTER_EXPIRE_DAYS:
-                # the offer window closed quietly — bank kept, no punishment.
+                # the offer window closed quietly â€” bank kept, no punishment.
                 # Marking today suppresses the re-ask until tomorrow.
                 self._barter_offer_date = today
                 self._save_barter()
@@ -2176,7 +2185,7 @@ class PetEngine:
             self.cast = {"until": now + 0.6, "started": now}
 
     def _init_alerts(self):
-        # P8: lifestyle alerts (churn / idle-fog / week-end review) — at
+        # P8: lifestyle alerts (churn / idle-fog / week-end review) â€” at
         # most ONE per day, guarded by the config alertDate so restarts can
         # never re-fire today's bubble. Conditions are re-evaluated at most
         # once a minute off the 2Hz tick path.
@@ -2184,7 +2193,7 @@ class PetEngine:
         self._last_alert_check = 0.0
 
     def _init_presence(self):
-        # P9: companion presence — the pet reacts to the REAL workflow it
+        # P9: companion presence â€” the pet reacts to the REAL workflow it
         # already reads (typing bursts, cursor dwell, foreground-app changes,
         # agent status files). Every reaction is config-gated; cooldowns keep
         # it companionable, not needy.
@@ -2204,11 +2213,11 @@ class PetEngine:
         """Median gap (seconds) between today's state transitions in this
         pet's log; None when there are not more than ALERT_FLAP_EVENTS of
         them. The engine logs one 'state' line per transition, so gaps are
-        state segments — a low median is task-flitting."""
+        state segments â€” a low median is task-flitting."""
         today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
         ts = []
         try:
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+            with open(store.activity_log_path(self.pet["id"]),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -2241,7 +2250,7 @@ class PetEngine:
         return idle >= total * ALERT_IDLE_RATIO
 
     def _alert_tick(self, now):
-        """P8 lifestyle alerts — at most one per day (config alertDate guard
+        """P8 lifestyle alerts â€” at most one per day (config alertDate guard
         survives restarts). Priority: churn (state-flap) > idle-fog warning >
         Sunday week-end review. Re-evaluated at most once a minute and
         deferred while a substantive bubble moment (attention_until) is
@@ -2284,8 +2293,14 @@ class PetEngine:
 
     def _barter_glow(self):
         """Attention-barter radiance: a warm glow whose size and alpha rise
-        with each traded stage (0-4) — visual milestone only, no sprite."""
+        with each traded stage (0-4) â€” visual milestone only, no sprite.
+
+        Priority: the embodied day-state aura (storm/fog/bloom/ember) carries
+        the day's signal and wins over the barter radiance while active â€”
+        stacking both would wash out the day readout."""
         try:
+            if getattr(self, "_embody_aura", None):
+                return None
             stage = int(getattr(self, "_barter_stage", 0) or 0)
             if stage <= 0:
                 return None
@@ -2311,3 +2326,4 @@ class PetEngine:
             return glow
         except Exception:
             return None
+

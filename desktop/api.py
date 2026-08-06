@@ -1,4 +1,4 @@
-"""ControlApi — the JS bridge contract for the pet dashboard/control UI.
+﻿"""ControlApi â€” the JS bridge contract for the pet dashboard/control UI.
 
 Runs in the SEPARATE control process (or the --web server). Talks to the pet
 via config.json + one-shot commands, so the pet process never hosts a browser.
@@ -28,7 +28,7 @@ _WEB_METHODS = [
 # Methods that make no sense from a browser tab: there is no control window
 # to hide (the tab IS the UI), so hide_control is a no-op. quit is NOT a
 # no-op: the dashboard's Quit button means "quit the pet app", and the real
-# pet process reads the quit one-shot command from config.json — so we write
+# pet process reads the quit one-shot command from config.json â€” so we write
 # the command (like ControlApi.quit does) but never os._exit(0) the SERVER.
 _WEB_NOP = frozenset(["hide_control"])
 
@@ -43,7 +43,7 @@ _INT_CONFIG_KEYS = frozenset({
 
 
 def _is_primitive(v):
-    """JSON-primitive check: str/int/float/bool/None (bool before int — Python
+    """JSON-primitive check: str/int/float/bool/None (bool before int â€” Python
     bools are ints)."""
     return v is None or isinstance(v, str) or isinstance(v, bool) \
         or isinstance(v, (int, float))
@@ -53,7 +53,7 @@ def _sanitize_config(conf):
     """Keep only JSON primitives from a JS-supplied config merge.
 
     The plugin ecosystem writes custom keys (eventMap etc.), so unknown keys
-    are KEPT — but lists are dropped and dicts only survive when every value
+    are KEPT â€” but lists are dropped and dicts only survive when every value
     is a primitive (no nested lists/dicts). Known numeric keys are coerced
     with a safe int; unparseable values drop the key instead of corrupting a
     reader that int()s it.
@@ -77,7 +77,7 @@ def _sanitize_config(conf):
 
 
 def _safe_int(v, default):
-    """int() that never raises — JS-supplied args fall back to the default
+    """int() that never raises â€” JS-supplied args fall back to the default
     instead of 500ing the RPC bridge."""
     try:
         return int(v)
@@ -97,7 +97,7 @@ def _pet_idx(cfg):
 def _current_app_session():
     """Resolve current_app_session through the desktop.main namespace: the
     test suite monkeypatches main.current_app_session, so the lookup must
-    happen at call time (lazy import — api is imported BY main)."""
+    happen at call time (lazy import â€” api is imported BY main)."""
     from desktop import main as _app
     return _app.current_app_session()
 
@@ -117,7 +117,7 @@ class ControlApi:
         c = store.load_config()
         c["pets"] = [p["name"] for p in sprites.PETS]
         c["petVisible"] = bool(c.get("petVisible", True))
-        c["petName"] = sprites.PETS[c.get("petIdx", 0) % len(sprites.PETS)]["name"]
+        c["petName"] = sprites.PETS[_pet_idx(c)]["name"]
         sess = store.read_status()
         c["state"] = (sess[0].get("state") or "idle") if sess and not sess[0].get("stale") else ("busy" if _current_app_session() else "idle")
         return c
@@ -126,7 +126,7 @@ class ControlApi:
         return sprites.build_previews()
 
     def get_sessions(self):
-        # ACTIVE sessions only — working/thinking/error/celebrating right now.
+        # ACTIVE sessions only â€” working/thinking/error/celebrating right now.
         # Idle/done sessions drop off the dashboard immediately; combined with
         # the server plugin no longer heartbeating idle sessions, stale files
         # are pruned from disk too.
@@ -144,8 +144,8 @@ class ControlApi:
 
     def get_logs(self, limit=200):
         """Recent activity history for the CURRENT pet (one pet, one memory)."""
-        pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
-        log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id)
+        pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
+        log_path = store.activity_log_path(pet_id)
         limit = max(1, min(_safe_int(limit, 200), 2000))
         try:
             with open(log_path, "r", encoding="utf-8") as fh:
@@ -209,7 +209,7 @@ class ControlApi:
           todaySeconds                  : seconds accrued today so far
           topApp                        : {app, seconds} or None (today, >= 30s)
           voice                         : pet-voice narrations of the week
-              (P8, store.voice_insights) — 0-4 lines; the JS contract only
+              (P8, store.voice_insights) â€” 0-4 lines; the JS contract only
               adds a field, never removes one.
         """
         d = store.read_wellbeing()
@@ -241,7 +241,7 @@ class ControlApi:
                 if apps:
                     apps.sort(key=lambda x: -x[1])
                     top_app = {"app": apps[0][0], "seconds": apps[0][1]}
-        # P8: pet-voice week narrations — fold today's live hour/app maps in
+        # P8: pet-voice week narrations â€” fold today's live hour/app maps in
         # so the voice reflects the running day (same rule as the analyses).
         hour_hist = dict(d.get("hourHistory")) if isinstance(d.get("hourHistory"), dict) else {}
         app_hist = dict(d.get("appHistory")) if isinstance(d.get("appHistory"), dict) else {}
@@ -263,8 +263,8 @@ class ControlApi:
                 app_hist[today.isoformat()] = day_apps
         starts = done = 0
         try:
-            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+            pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
+            with open(store.activity_log_path(pet_id),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -305,7 +305,7 @@ class ControlApi:
           hours           : [{hour, seconds}, ...] for all 24, ascending
           best            : {hour, label, seconds, pct} of the busiest hour
                             (ties -> earliest hour), or None
-          runnerUp        : second-busiest hour (or None) — shows the spread
+          runnerUp        : second-busiest hour (or None) â€” shows the spread
           spanLabel       : "mornings" / "afternoons" / "evenings" / "nights"
                             for the best hour, for a friendlier UI line
         """
@@ -415,7 +415,7 @@ class ControlApi:
     def get_goal_state(self):
         """Daily focus goal state for the dashboard ring.
 
-        Returns {goalMin, todaySeconds, met, streak} — todaySeconds folds the
+        Returns {goalMin, todaySeconds, met, streak} â€” todaySeconds folds the
         live running total (same rule as get_wellbeing_history) and streak is
         consecutive days (ending today or yesterday) that hit goalMin*60.
         """
@@ -451,14 +451,14 @@ class ControlApi:
 
     def get_memory_lane(self):
         """The pet's memory lane (P8): the last 7 days, each narrated in the
-        pet's voice from the REAL shape of that day — store.build_lane +
+        pet's voice from the REAL shape of that day â€” store.build_lane +
         day_note are the same pure rules the pet itself would use, so the
         card can never disagree with the pet's own telling."""
         d = store.read_wellbeing()
         events = []
         try:
-            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+            pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
+            with open(store.activity_log_path(pet_id),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -476,9 +476,9 @@ class ControlApi:
         this API only reads that log."""
         out = {"today": "", "last": []}
         try:
-            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
+            pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
             today = time.strftime("%Y-%m-%d")
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+            with open(store.activity_log_path(pet_id),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -500,7 +500,7 @@ class ControlApi:
 
     def get_chronotype(self):
         """Chronotype (P5): the pet's gene state read from the user's REAL
-        hour fingerprint — the same pure store rules the pet engine uses, so
+        hour fingerprint â€” the same pure store rules the pet engine uses, so
         the dashboard card can never disagree with the bubble."""
         c = store.load_config()
         chrono_type = str(c.get("chronoType", "larval") or "larval")
@@ -509,7 +509,7 @@ class ControlApi:
         profile = store.chronotype_profile(hour_history)
         return {"chronoType": chrono_type,
                 "chronoDate": str(c.get("chronoDate", "") or ""),
-                "genes": store.gene_manifest(chrono_type, profile),
+                "genes": store.gene_manifest(chrono_type),
                 "fingerprintHours": [{"hour": h, "seconds": profile["hours"].get(h, 0)}
                                      for h in range(24)],
                 "activeHours": profile["active_hours"],
@@ -520,7 +520,7 @@ class ControlApi:
                 "readout": store.chrono_readout(chrono_type, profile)}
 
     def get_day_health(self):
-        """Day-body (P6): the pet's embodied day state — the SAME pure store
+        """Day-body (P6): the pet's embodied day state â€” the SAME pure store
         rule the pet engine draws, so the card can never disagree with the
         aura. Errors come from this pet's activity log, focus from focus.json.
 
@@ -528,8 +528,8 @@ class ControlApi:
         embody log); 0 when the engine hasn't logged one yet.
         """
         d = store.read_wellbeing()
-        pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
-        log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id)
+        pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
+        log_path = store.activity_log_path(pet_id)
         today = time.strftime("%Y-%m-%d")
         errors = 0
         since = 0.0
@@ -577,7 +577,7 @@ class ControlApi:
     def get_pomo_state(self):
         """Pomodoro cycle state for the dashboard rail card.
 
-        Returns {count, nextIsLong, pomoMin, pomoShort, pomoLong} — count is
+        Returns {count, nextIsLong, pomoMin, pomoShort, pomoLong} â€” count is
         today's completed sessions; nextIsLong is whether the break after the
         NEXT completed pomodoro is a long one (every 4th).
         """
@@ -590,7 +590,7 @@ class ControlApi:
                 "pomoLong": int(c.get("pomoLong", 15) or 15)}
 
     def get_rituals(self):
-        """Today's personal rituals (P7) with LIVE progress — the same pure
+        """Today's personal rituals (P7) with LIVE progress â€” the same pure
         store derivation and progress rules the pet engine uses, so the card
         can never disagree with the bubble. Prefers the engine's persisted
         daily list (ritualDate/ritualList) and falls back to deriving fresh
@@ -629,14 +629,14 @@ class ControlApi:
                 "offered": offered}
 
     def barter_pay(self):
-        """Confirm the standing barter offer — writes the one-shot command;
+        """Confirm the standing barter offer â€” writes the one-shot command;
         the pet process owns the trade (bank deduction + stage-up ceremony)."""
         self._cmd("barterPay")
         return True
 
     def get_weekly_wrapped(self):
         """'Your Week in Focus' summary: totals, best day, top app, streak,
-        XP earned — rendered client-side; copy-to-clipboard share text."""
+        XP earned â€” rendered client-side; copy-to-clipboard share text."""
         out = {"days": 7, "weekSeconds": 0, "bestDay": None, "topApp": None,
                "streak": 0, "xp": 0, "focusSessions": 0, "prevWeekSeconds": 0}
         d = store.read_wellbeing()
@@ -676,8 +676,8 @@ class ControlApi:
         out["streak"] = profile["streak"]
         # count focus sessions in the activity log this week
         try:
-            pet_id = sprites.PETS[c.get("petIdx", 0) % len(sprites.PETS)]["id"]
-            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+            pet_id = sprites.PETS[_pet_idx(c)]["id"]
+            with open(store.activity_log_path(pet_id),
                       encoding="utf-8") as fh:
                 for line in fh:
                     try:
@@ -727,7 +727,7 @@ class ControlApi:
 
     def save_config(self, conf):
         c = store.load_config()
-        c.update(_sanitize_config(conf))  # merge — never drop petVisible or pending commands
+        c.update(_sanitize_config(conf))  # merge â€” never drop petVisible or pending commands
         store.save_config(c)
         return True
 
@@ -773,3 +773,4 @@ class ControlApi:
         except Exception:
             pass
         sys.exit(0)
+

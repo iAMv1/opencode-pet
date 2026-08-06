@@ -108,6 +108,19 @@ class TestPetIndex:
         c = store.load_config()
         assert 0 <= c["petIdx"] < len(api.sprites.PETS)
 
+    def test_garbage_pet_idx_read_paths(self, pet_dir):
+        """String petIdx must not 500 any pet-derived read (was a RPC 500 —
+        dashboard died on first call)."""
+        store.save_config({"petIdx": "garbage"})
+        ctl = api.ControlApi()
+        assert isinstance(ctl.get_config(), dict)
+        assert isinstance(ctl.get_pet_profile(), dict)
+        assert isinstance(ctl.get_logs(), list)
+        assert isinstance(ctl.get_memory_lane(), list)
+        assert isinstance(ctl.get_day_health(), dict)
+        assert isinstance(ctl.get_weekly_wrapped(), dict)
+        assert isinstance(ctl.get_wellbeing_insights(), dict)
+
 
 class TestArgClamps:
     def test_garbage_days_limits_fall_back(self, pet_dir):

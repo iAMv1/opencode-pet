@@ -307,8 +307,9 @@ def load_config():
             return default
         except OSError:
             time.sleep(CONFIG_READ_RETRY_SLEEP)
-        except Exception:
-            return default
+        except (ValueError, json.JSONDecodeError):
+            # partial read mid-write by the other process — retry like OSError
+            time.sleep(CONFIG_READ_RETRY_SLEEP)
     return default
 
 
@@ -349,7 +350,15 @@ def _config_lock():
     try:
         os.makedirs(PET_DIR, exist_ok=True)
         fd = os.open(CONFIG_FILE, os.O_RDWR | os.O_CREAT)
-        _lock_with_retry(fd)
+        if not _lock_with_retry(fd):
+            # lock contended for ~1s — don't write unlocked (interleaved
+            # ftruncate+write would corrupt config); callers treat fd None
+            # as skip. The thread lock still held, so same-process saves
+            # remain serialized.
+            os.close(fd)
+            fd = None
+            yield None
+            return
         yielded = True
         yield fd
     except OSError:
@@ -621,10 +630,8 @@ GENE_MANIFEST = {
 }
 
 
-def gene_manifest(chronotype, profile=None):
-    """The pet's chrono-gene manifest for a class — deterministic per class.
-    `profile` is kept in the signature so a later data-driven refinement can
-    tune genes from the hour fingerprint (peak, spread) without an API change."""
+def gene_manifest(chronotype):
+    """The pet's chrono-gene manifest for a class — deterministic per class."""
     return dict(GENE_MANIFEST.get(chronotype or "larval", GENE_MANIFEST["larval"]))
 
 

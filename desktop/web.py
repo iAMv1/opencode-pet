@@ -3,7 +3,7 @@
 `python desktop/main.py --web [--pet-dir DIR] [--port N]` serves the REAL
 app.html over localhost HTTP with a fetch-based bridge that maps
 window.pywebview.api.* onto the REAL ControlApi. This is both a feature
-(view the dashboard in any browser, e.g. Ctrl+Shift+D with pywebview
+(view the dashboard in any browser, e.g. Ctrl+Alt+D with pywebview
 unavailable) and the real end-to-end path the test suite drives: same UI,
 same backend, same data files — no mock anywhere.
 """
