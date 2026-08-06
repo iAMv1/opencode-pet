@@ -55,6 +55,22 @@ EVOLVE_LEVEL_2 = 5
 EVOLVE_LEVEL_3 = 10
 GOAL_DEFAULT_MIN = 120
 
+# ------------------------------------------------------------ weekday spirit
+# Random-idea: the pet takes a one-line persona per weekday, once per day.
+WEEKDAY_LINES = {
+    0: "Monday me \u2014 let's earn this week.",
+    1: "Tuesday. Steady paws.",
+    2: "Wednesday \u2014 halfway ember.",
+    3: "Thursday. Almost the weekend hill.",
+    4: "Friday me \u2014 last deep push.",
+    5: "Saturday. Slow days count too.",
+    6: "Sunday. I'll keep watch while you rest.",
+}
+
+def weekday_line(wday):
+    """The pet's weekday persona line (None if the day has none)."""
+    return WEEKDAY_LINES.get(wday)
+
 # ---------------------------------------------------------------- rituals (P7)
 # Personal rituals derived from the user's OWN history — never canned quests.
 RITUAL_MAX_DAILY = 3           # at most 3 rituals per day, in priority order

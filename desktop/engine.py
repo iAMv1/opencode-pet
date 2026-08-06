@@ -44,6 +44,10 @@ BREAK_NUDGE_SECS = 5        # nudge bubble lifetime
 BREAK_TIRED_MULTIPLE = 2    # working 2x breakMin => tired mood
 SNOOZE_DEFAULT_MIN = 5      # break snooze length when the command lacks a value
 
+# ---------------------------------------------------------------- random ideas
+ECHO_COOLDOWN_SECS = 7200   # time-warp echo: at most once per 2 hours
+ECHO_MIN_SECS = 300         # echo needs >= 5 min of activity that hour
+
 # ---------------------------------------------------------------- stretch nudge
 STRETCH_DEFAULT_MIN = 45    # continuous-work threshold (0 = off)
 STRETCH_COOLDOWN_SECS = 1800  # max 1 stretch nudge per 30 min
@@ -1396,6 +1400,10 @@ class PetEngine:
         self.os_app = _app.foreground_app()
         self._cursor = _app.cursor_pos()
         self._update_bubble(now)
+        # Random-idea greetings (weekday spirit, time-warp echo) run FIRST —
+        # anything substantive (goal, dream, epoch) must win the bubble.
+        self._weekday_tick(now)
+        self._echo_tick(now)
         self._break_nudge(now)
         self._stretch_nudge(now)
         # focus session lifecycle (grow / wilt / complete) + mood + tool XP
@@ -1678,6 +1686,48 @@ class PetEngine:
         elif not self.os_active and self._was_active:
             self._idle_since = now
         self._was_active = self.os_active
+
+    def _weekday_tick(self, now):
+        """Random-idea: weekday spirit — the pet takes a one-line persona per
+        weekday, once per day (in-memory guard; re-fires on restart, which is
+        fine — it's a greeting)."""
+        today = time.strftime("%Y-%m-%d")
+        if getattr(self, "_weekday_date", "") == today:
+            return
+        self._weekday_date = today
+        line = store.weekday_line(time.localtime().tm_wday)
+        if not line:
+            return
+        self.bubble_text = line
+        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self._log("weekday")
+
+    def _echo_tick(self, now):
+        """Random-idea: time-warp echo — what was happening 7 days ago at
+        this hour? Real hourHistory/appHistory; silent when there's no data.
+        At most once per ECHO_COOLDOWN_SECS."""
+        if not self.os_active:
+            return
+        key = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+        hour = self._hour_history.get(key)
+        apps = self._app_history.get(key)
+        if not isinstance(hour, dict) or not isinstance(apps, dict):
+            return
+        secs = int(hour.get(str(time.localtime().tm_hour), 0) or 0)
+        if secs < ECHO_MIN_SECS:
+            return
+        top = max(apps, key=lambda k: int(apps.get(k, 0) or 0)) if apps else None
+        if not top:
+            return
+        last = getattr(self, "_echo_at", 0)
+        if last and now - last < ECHO_COOLDOWN_SECS:
+            return
+        self._echo_at = now
+        label = win32.APP_LABELS.get(top, top)
+        self.bubble_text = "This time last week you were in %s \u2014 %d min deep. I remember." \
+            % (label, int(secs // 60))
+        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self._log("echo", app=top, mins=int(secs // 60))
 
     # ------------------------------------------------------- episodic memory
     def _read_memory_events(self, limit=200):
