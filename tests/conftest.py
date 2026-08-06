@@ -17,21 +17,35 @@ import pytest  # noqa: E402
 
 @pytest.fixture()
 def pet_dir(tmp_path, monkeypatch):
-    """Point all main.py data-file constants at a throwaway temp directory."""
-    import desktop.main as main
+    """Point all data-file constants at a throwaway temp directory.
 
-    monkeypatch.setattr(main, "PET_DIR", str(tmp_path))
-    monkeypatch.setattr(main, "CONFIG_FILE", str(tmp_path / "config.json"))
-    monkeypatch.setattr(main, "WELLBEING_FILE", str(tmp_path / "wellbeing.json"))
-    monkeypatch.setattr(main, "FOCUS_FILE", str(tmp_path / "focus.json"))
-    monkeypatch.setattr(main, "ACTIVITY_LOG", str(tmp_path / "activity.jsonl"))
+    Since the split, the constants live in desktop.store and are read through
+    that module's namespace at call time; desktop.main re-exports them as
+    copies, so patching main alone would NOT redirect the data layer (tests
+    would hit the real ~/.opencode/pet). Patch store, keep patching main too.
+    """
+    import desktop.main as main
+    import desktop.store as store
+
+    for mod in (store, main):
+        monkeypatch.setattr(mod, "PET_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "CONFIG_FILE", str(tmp_path / "config.json"))
+        monkeypatch.setattr(mod, "WELLBEING_FILE", str(tmp_path / "wellbeing.json"))
+        monkeypatch.setattr(mod, "FOCUS_FILE", str(tmp_path / "focus.json"))
+        monkeypatch.setattr(mod, "ACTIVITY_LOG", str(tmp_path / "activity.jsonl"), raising=False)
     return tmp_path
 
 
 @pytest.fixture()
 def no_window(monkeypatch):
-    """Replace PetWindow with a no-op stand-in so PetEngine() never touches GDI."""
+    """Replace PetWindow with a no-op stand-in so PetEngine() never touches GDI.
+
+    The engine resolves PetWindow through the desktop.win32 module namespace,
+    so the replacement must land there; main re-exports the same name for
+    anything that still reads it from desktop.main.
+    """
     import desktop.main as main
+    import desktop.win32 as win32
 
     class FakeWin:
         def __init__(self):
@@ -40,6 +54,7 @@ def no_window(monkeypatch):
         def __getattr__(self, name):
             return lambda *a, **k: None
 
+    monkeypatch.setattr(win32, "PetWindow", FakeWin)
     monkeypatch.setattr(main, "PetWindow", FakeWin)
     return FakeWin
 
