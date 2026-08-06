@@ -10,8 +10,9 @@ import os
 import random
 import sys
 import time
-
 from . import engine, sprites, store
+
+SNAPSHOT_STALE_SECS = 6.0  # pet-state.json older than this = engine dead/absent
 
 # Methods the --web RPC bridge accepts; must stay in sync with the desktop
 # ControlApi (guarded by tests/test_spec_contract.py).
@@ -649,6 +650,9 @@ class ControlApi:
             with open(store.state_file_path(), encoding="utf-8") as fh:
                 d = json.load(fh)
             if isinstance(d, dict):
+                t = d.get("t")
+                if isinstance(t, (int, float)) and time.time() - t > SNAPSHOT_STALE_SECS:
+                    d = dict(d, stale=True)
                 return d
         except Exception:
             pass

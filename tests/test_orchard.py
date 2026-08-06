@@ -267,6 +267,18 @@ class TestGrowth:
         _prime(eng, now, now - 30)
         assert read_tasks(pet_dir)["tasks"][0]["invested"] == 0
 
+    def test_other_soil_grows_in_any_app(self, pet_dir, no_window):
+        """Regression: 'other'-soil trees never grew (soil != app_soil guard)."""
+        eng = _eng(pet_dir, no_window)
+        t = _task(estMin=10)
+        t["soil"] = "other"
+        store_mod.write_tasks({"tasks": [t]})
+        eng.os_active = True
+        eng.os_app = "VS Code"
+        now = time.time()
+        _prime(eng, now, now - 30)
+        assert read_tasks(pet_dir)["tasks"][0]["invested"] == 30.0
+
     def test_idle_time_never_grows(self, pet_dir, no_window):
         eng = _eng(pet_dir, no_window)
         store_mod.write_tasks({"tasks": [_task(estMin=10)]})

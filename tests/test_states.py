@@ -38,7 +38,14 @@ def make_engine(pet_idx=0, sessions=None, os_active=False, event_map=None, **kw)
     }
     anims = [a["id"] for a in main.pet_states(eng.pet)]
     m = event_map if event_map is not None else eng.cfg.get("eventMap")
-    eng._event_map = store.sanitize_event_map(m, anims)
+    m = store.sanitize_event_map(m, anims)
+    # mirror engine._init_event_map: partial config maps merge over the
+    # pet's own native map instead of shadowing it
+    base = dict(eng.pet.get("map") or main.DEFAULT_MAP)
+    if m:
+        base.update(m)
+        m = base
+    eng._event_map = m
     return eng
 
 
@@ -106,6 +113,13 @@ class TestEventMap:
         own map (busy -> running-right) wins."""
         eng = make_engine(pet_idx=5, sessions=make_sessions("busy"),
                           event_map={"busy": "walking"})
+        assert eng._anim_id() == "running-right"
+
+    def test_partial_config_map_merges_over_pet_map(self):
+        """Regression: a partial config map must not shadow the pet's own
+        native map for unmapped semantics (lpc-cat busy -> running-right)."""
+        eng = make_engine(pet_idx=5, sessions=make_sessions("busy"),
+                          event_map={"idle": "idle", "waiting": "waiting"})
         assert eng._anim_id() == "running-right"
 
     def test_full_engine_init_resolves_config_map(self, no_window, pet_dir):
@@ -336,7 +350,7 @@ class TestPetStateApi:
         eng.sessions = make_sessions("busy")
         eng._snapshot_state()
         d = self._snap(pet_dir)
-        assert set(d) == {"raw", "state", "anim", "mood", "eventMap",
+        assert set(d) == {"raw", "state", "anim", "t", "mood", "eventMap",
                           "arrows", "followCursor", "drag"}
         assert d["raw"] == "busy"
         assert d["state"] == "busy"
@@ -345,6 +359,7 @@ class TestPetStateApi:
         assert d["drag"] is False
         assert d["arrows"] is True
         assert d["followCursor"] is True
+        assert isinstance(d["t"], (int, float))
 
     def test_snapshot_reflects_movement_toggles(self, no_window, pet_dir):
         eng = main.PetEngine()

@@ -861,6 +861,13 @@ class PetEngine:
         m = store.sanitize_event_map(
             self.cfg.get("eventMap"),
             [a["id"] for a in sprites.pet_states(self.pet)])
+        # merge over the pet's own map so a partial config map never shadows
+        # the pet's native anims (e.g. lpc-cat's running-right when config
+        # only maps idle/waiting/stale)
+        base = dict(self.pet.get("map") or sprites.DEFAULT_MAP)
+        if m:
+            base.update(m)
+            m = base
         self._event_map = m
         if m is not None:
             self.cfg["eventMap"] = m
@@ -1163,7 +1170,10 @@ class PetEngine:
         try:
             st = self._state()
             an = self._anim_id()
-            snap = (st, an, self.mood, bool(self.dragging))
+            em = self._event_map or self.pet.get("map") or sprites.DEFAULT_MAP
+            snap = (st, an, self.mood, bool(self.dragging), em,
+                    bool(self.cfg.get("arrows", True)),
+                    bool(self.cfg.get("followCursor", True)))
             if snap == getattr(self, "_last_snap", None):
                 return
             self._last_snap = snap
@@ -1172,8 +1182,9 @@ class PetEngine:
                 "raw": self._raw_state(),
                 "state": st,
                 "anim": an,
+                "t": now,
                 "mood": self.mood,
-                "eventMap": self._event_map or self.pet.get("map") or sprites.DEFAULT_MAP,
+                "eventMap": em,
                 "arrows": bool(self.cfg.get("arrows", True)),
                 "followCursor": bool(self.cfg.get("followCursor", True)),
                 "drag": bool(self.dragging),
@@ -2390,6 +2401,7 @@ class PetEngine:
         self._last_orchard = 0.0       # maintenance cadence gate
         self._orchard_cache = (0.0, None)  # (read time, tasks) for next-task
         self._last_waggle = 0.0        # "dancing toward" bubble cooldown
+        self._pending_harvest = []     # deferred awards (persisted before XP)
 
     def _orchard_tick(self, now):
         """Garden maintenance, ~every ORCHARD_TICK_SECS: one locked pass over
@@ -2399,6 +2411,7 @@ class PetEngine:
             return
         self._last_orchard = now
         store.update_tasks(lambda cur: self._orchard_pass(cur, now))
+        self._drain_harvest(now)
         self._orchard_waggle(now)
 
     def _orchard_pass(self, cur, now):
@@ -2434,7 +2447,7 @@ class PetEngine:
                 dt = 0.0  # clock skew / fresh write: never credit negative time
             if dt > store.SLEEP_GAP_SECS or not self.os_active:
                 continue
-            if t.get("soil") != app_soil:
+            if t.get("soil") != "other" and t.get("soil") != app_soil:
                 continue
             t["invested"] = float(t.get("invested") or 0) + dt
             t["updated"] = now
@@ -2494,10 +2507,10 @@ class PetEngine:
 
     def _orchard_harvest(self, cur, now):
         """Settle dashboard harvest-requests: the api marks a tree done; the
-        FIRST tick that sees it awards XP, tallies terroir, and applies the
-        gamble wither check. harvested guards against double awards (and the
-        write lands in the same locked pass, so a crash between read and
-        write can't double-award either)."""
+        FIRST tick that sees it marks harvested + tallies terroir in the
+        locked tasks.json pass. XP/bubble/logs are deferred to _drain_harvest
+        AFTER the tasks write lands, so a crash between the config write
+        (XP) and the tasks write can't double-award on restart."""
         for t in cur.get("tasks") or []:
             if not isinstance(t, dict):
                 continue
@@ -2512,29 +2525,40 @@ class PetEngine:
                 invested = 0.0
             est = max(1, int(t.get("estMin") or 0)) * 60
             gambled = bool(t.get("gambled"))
+            pending = {"title": title, "soil": soil, "invested": int(invested),
+                       "gambled": gambled, "wither": False, "id": t.get("id")}
             if gambled and invested > est * store.ORCHARD_GAMBLE_LIMIT:
                 # push-your-luck lost: the tree withered while it waited.
                 # No XP, no punishment — pruned quietly.
                 t["status"] = "pruned"
                 t["updated"] = now
-                self.bubble_text = "%s withered \u2014 the gamble ran long" % title
+                pending["wither"] = True
+            else:
+                terroir = cur.setdefault("terroir", {})
+                trow = terroir.setdefault(soil, {"harvests": 0, "mins": 0})
+                trow["harvests"] = int(trow.get("harvests") or 0) + 1
+                trow["mins"] = int(trow.get("mins") or 0) + int(invested) // 60
+            self._pending_harvest.append(pending)
+
+    def _drain_harvest(self, now):
+        """Apply deferred harvest outcomes AFTER tasks.json was persisted."""
+        for p in self._pending_harvest:
+            if p["wither"]:
+                self.bubble_text = "%s withered \u2014 the gamble ran long" % p["title"]
                 self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
-                self._log("orchard", event="wither", id=t.get("id"),
-                          title=title, soil=soil)
+                self._log("orchard", event="wither", id=p["id"],
+                          title=p["title"], soil=p["soil"])
                 continue
-            xp = XP_ORCHARD * (2 if gambled else 1)
+            xp = XP_ORCHARD * (2 if p["gambled"] else 1)
             self._award_xp(xp, "harvest")
             self.mood = "happy"
-            self.bubble_text = "Harvested %s! +%d XP \u2728" % (title, xp)
+            self.bubble_text = "Harvested %s! +%d XP \u2728" % (p["title"], xp)
             self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
             self.attention_until = now + FOCUS_ATTENTION_SECS
-            terroir = cur.setdefault("terroir", {})
-            trow = terroir.setdefault(soil, {"harvests": 0, "mins": 0})
-            trow["harvests"] = int(trow.get("harvests") or 0) + 1
-            trow["mins"] = int(trow.get("mins") or 0) + int(invested) // 60
-            self._log("harvest", id=t.get("id"), title=title, soil=soil,
-                      xp=xp, gambled=gambled, invested=int(invested))
+            self._log("harvest", id=p["id"], title=p["title"], soil=p["soil"],
+                      xp=xp, gambled=p["gambled"], invested=p["invested"])
             self._chime("complete")
+        self._pending_harvest = []
 
     def _orchard_haiku(self, cur, now):
         """Day-close haiku (kuleshov of the day's garden): fires once per day

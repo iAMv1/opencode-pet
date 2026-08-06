@@ -276,10 +276,12 @@ class PetWindow:
             # floor on the next tick — this lets the user place the pet
             # anywhere in the window, not just on the bottom axis.
             self.engine.phys["pinned_y"] = True
-            # Grab keyboard focus so the arrow keys land on the pet window
-            # (arrow-control comes from _on_key_down).
+            # Grab keyboard focus ONLY when arrows are enabled — stealing
+            # focus from the user's active app on every pet click is hostile
+            # (their typing would be dropped by the pet window).
             try:
-                user32.SetFocus(hwnd)
+                if self.engine.cfg.get("arrows", True):
+                    user32.SetFocus(hwnd)
             except Exception:
                 pass
         user32.SetCapture(hwnd)
