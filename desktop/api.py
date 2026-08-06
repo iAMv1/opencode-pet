@@ -7,6 +7,7 @@ via config.json + one-shot commands, so the pet process never hosts a browser.
 import datetime
 import json
 import os
+import random
 import sys
 import time
 
@@ -22,7 +23,8 @@ _WEB_METHODS = [
     "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
     "get_rituals", "get_barter_state", "barter_pay",
     "get_memory_lane", "get_alerts",
-    "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
+    "get_orchard_state", "orchard_plant", "orchard_harvest", "orchard_delete",
+    "get_pet_state", "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
 # Methods that make no sense from a browser tab: there is no control window
@@ -629,10 +631,130 @@ class ControlApi:
                 "offered": offered}
 
     def barter_pay(self):
-        """Confirm the standing barter offer â€” writes the one-shot command;
+        """Confirm the standing barter offer — writes the one-shot command;
         the pet process owns the trade (bank deduction + stage-up ceremony)."""
         self._cmd("barterPay")
         return True
+
+    def get_pet_state(self):
+        """Live pet state: the engine's own resolution (raw/state/anim) plus
+        the movement toggles and drag flag.
+
+        The engine writes pet-state.json at ~2Hz on change (cross-process:
+        this process can't touch the engine's memory), so this reads that
+        snapshot. Before the first snapshot (engine not running) it falls
+        back to a best-effort read of the session files.
+        """
+        try:
+            with open(store.state_file_path(), encoding="utf-8") as fh:
+                d = json.load(fh)
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+        sess = store.read_status()
+        raw = None
+        if sess and not sess[0].get("stale"):
+            raw = sess[0].get("state") or None
+        return {"raw": raw,
+                "state": raw or ("busy" if _current_app_session() else "idle"),
+                "anim": None,
+                "mood": store.load_config().get("mood", "neutral"),
+                "eventMap": None,
+                "arrows": True, "followCursor": True, "drag": False}
+
+    # ------------------------------------------------------ task orchard
+    def get_orchard_state(self):
+        """Task Orchard: the garden state for the dashboard â€” every tree
+        (sorted: ripe first, then growing, seed, done, pruned), the next tree
+        the pet tends (the SAME pure store rule the pet's waggle bubble uses),
+        terroir yields per soil, and whether the weekly prune ran today."""
+        d = store.read_tasks()
+        tasks = d.get("tasks") or []
+        rank = {"ripe": 0, "growing": 1, "seed": 2, "done": 3, "pruned": 4}
+        trees = sorted((dict(t) for t in tasks if isinstance(t, dict)),
+                       key=lambda t: (rank.get(t.get("status"), 9),
+                                      -float(t.get("invested") or 0)))
+        try:
+            from desktop import main as _app
+            app = _app.foreground_app()
+        except Exception:
+            app = ""
+        return {"trees": trees,
+                "nextTask": store.orchard_next_task(tasks, app),
+                "terroir": d.get("terroir") or {},
+                "prunedToday": str(d.get("pruneDate") or "")
+                               == time.strftime("%Y-%m-%d")}
+
+    def orchard_plant(self, title=None, soil="other", estMin=30, gamble=False):
+        """Plant a task-tree. Strict validation (P10 style): 1-60 char title,
+        known soil id, estMin 1-600 minutes, gamble coerced to bool. The
+        control process writes the tree; the pet process owns all growth."""
+        if not isinstance(title, str):
+            return False
+        title = title.strip()
+        if not title or len(title) > 60:
+            return False
+        soil = str(soil or "other")
+        if soil not in store.ORCHARD_SOILS:
+            return False
+        est = _safe_int(estMin, 0)
+        if est < 1 or est > 600:
+            return False
+        now = time.time()
+        task = {"id": "t%d-%d" % (int(now * 1000), random.randint(0, 9999)),
+                "title": title, "soil": soil, "estMin": est, "invested": 0,
+                "status": "seed", "planted": now, "updated": now,
+                "lastTs": now, "gambled": bool(gamble), "doneAt": None,
+                "harvested": False}
+
+        def add(cur):
+            cur.setdefault("tasks", []).append(task)
+            return cur
+
+        return store.update_tasks(add)
+
+    def orchard_harvest(self, task_id=None):
+        """Harvest-request for one tree: marks it done (doneAt) under the
+        tasks.json lock. The pet settles the harvest on its next tick â€” XP,
+        terroir tally, and the gamble wither check are engine-side (it owns
+        growth), so this never awards anything itself. Returns False when the
+        tree isn't harvestable (already done / not past its estimate)."""
+        if not isinstance(task_id, str):
+            return False
+        result = {}
+
+        def mark(cur):
+            for t in cur.get("tasks") or []:
+                if not isinstance(t, dict) or t.get("id") != task_id:
+                    continue
+                est = max(1, int(t.get("estMin") or 0)) * 60
+                past = float(t.get("invested") or 0) >= est
+                if t.get("status") == "ripe" or (
+                        t.get("status") in ("seed", "growing") and past):
+                    t["status"] = "done"
+                    t["doneAt"] = time.time()
+                    t["updated"] = t["doneAt"]
+                    result["ok"] = True
+                return cur
+            return None  # unknown id: nothing written
+
+        store.update_tasks(mark)
+        return bool(result.get("ok"))
+
+    def orchard_delete(self, task_id=None):
+        """Remove one tree from the garden â€” the pet never grows it again.
+        Returns False when no such tree exists."""
+        if not isinstance(task_id, str):
+            return False
+
+        def rem(cur):
+            before = cur.get("tasks") or []
+            cur["tasks"] = [t for t in before
+                            if not (isinstance(t, dict) and t.get("id") == task_id)]
+            return cur if len(cur["tasks"]) != len(before) else None
+
+        return store.update_tasks(rem)
 
     def get_weekly_wrapped(self):
         """'Your Week in Focus' summary: totals, best day, top app, streak,

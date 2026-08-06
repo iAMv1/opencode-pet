@@ -157,6 +157,83 @@ MOCK = r"""<script>
         window.__calls.push("save_config");
         return Promise.resolve(true);
       },
+      get_pet_state: function () {
+        window.__calls = window.__calls || [];
+        window.__calls.push("get_pet_state");
+        return Promise.resolve({
+          raw: "busy", state: "busy", anim: "walking", mood: "happy",
+          eventMap: {
+            idle: "idle", busy: "walking", thinking: "review", error: "failed",
+            success: "jumping", waiting: "waiting", stale: "waiting",
+            celebrating: "jumping", retry: "failed"
+          },
+          arrows: true, followCursor: true, drag: true
+        });
+      },
+      get_alerts: function () {
+        return Promise.resolve({
+          today: "You worked past 11pm",
+          last: [{ line: "You worked past 11pm", t: Date.now() / 1000 - 3600 }]
+        });
+      },
+      get_memory_state: function () {
+        return Promise.resolve({
+          dream: "I dreamed you kept a 3-day streak alive \u2014 the garden grew taller.",
+          epochFlags: [{ name: "Epoch \u2014 Bloom", desc: "reached 60 days" }]
+        });
+      },
+      get_chronotype: function () {
+        return Promise.resolve({
+          chronoType: "owl", readout: "a night owl's rhythm",
+          genes: { species: "owl", color: "amber", pattern: "streaked", activity: "night" },
+          activeHours: [21, 22], dataDays: 12, neededDays: 3,
+          nextReview: "in 3 days"
+        });
+      },
+      get_day_health: function () {
+        return Promise.resolve({ state: "flow", label: "in flow \u2014 your day is your own" });
+      },
+      get_rituals: function () {
+        return Promise.resolve({
+          rituals: [
+            { name: "Deep work", desc: "60+ uninterrupted minutes", current: 40, target: 60, done: false },
+            { name: "Stand up", desc: "a stretch every hour", current: 1, target: 1, done: true }
+          ]
+        });
+      },
+      get_barter_state: function () {
+        return Promise.resolve({
+          stage: 1, bank: 20,
+          nextOffer: { name: "The Exchange", desc: "trade attention for a story", costMinutes: 30 }
+        });
+      },
+      get_pomo_state: function () {
+        return Promise.resolve({ count: 3, nextIsLong: true, pomoMin: 25, pomoShort: 5, pomoLong: 15 });
+      },
+      get_memory_lane: function () {
+        var today = new Date();
+        function ld(d) {
+          return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+            String(d.getDate()).padStart(2, "0");
+        }
+        var notes = ["a steady day \u2014 6.3h", "a foggy day \u2014 45% of it was idle", "the night was yours"];
+        var mins = [378, 120, 240];
+        return Promise.resolve(mins.map(function (m, i) {
+          var d = new Date(today.getTime() - (2 - i) * 86400000);
+          return { date: ld(d), totalMin: m, hourPeak: 2, note: notes[i] };
+        }));
+      },
+      get_orchard_state: function () {
+        return Promise.resolve({
+          trees: [
+            { id: "m1", title: "Refactor store layer", soil: "code", estMin: 45, invested: 2340, status: "growing", gambled: false },
+            { id: "m2", title: "Draft release notes", soil: "write", estMin: 30, invested: 300, status: "seed", gambled: true }
+          ],
+          nextTask: { id: "m1", title: "Refactor store layer", soil: "code", estMin: 45, invested: 2340, status: "growing" },
+          terroir: { code: { harvests: 3, mins: 210 } },
+          prunedToday: false
+        });
+      },
       hide_pet: function () { return Promise.resolve(true); },
       show_pet: function () { return Promise.resolve(true); },
       hide_control: function () {

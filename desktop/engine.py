@@ -94,6 +94,13 @@ ALERT_IDLE_MIN_SECS = 30 * 60 # ...but only once a real day has accumulated
 ALERT_WEEK_END_WEEKDAY = 6    # week-end review fires on Sunday (0 = Monday)
 ALERT_WEEK_END_HOUR = 20      # ...after 20:00
 
+# ---------------------------------------------------------------- task orchard
+XP_ORCHARD = 15              # a harvested tree IS earned, like a ritual
+ORCHARD_TICK_SECS = 30.0     # garden maintenance cadence (growth/prune/harvest)
+ORCHARD_RIPE_BUBBLE_SECS = 5.0
+ORCHARD_WAGGLE_SECS = 1800   # "dancing toward" bubble at most once per 30 min
+ORCHARD_HAIKU_HOUR = 22      # day-close haiku, same quiet hour as the dayclose
+
 # ---------------------------------------------------------------- companion presence (P9)
 TYPING_DELTA_MS = 2000        # input this fresh counts as a typing-burst tick
 TYPING_SUSTAIN_SECS = 30      # burst must hold this long before the pet notices
@@ -168,6 +175,8 @@ class PetEngine:
         self._init_barter()
         self._init_alerts()
         self._init_presence()
+        self._init_orchard()
+        self._init_event_map()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -841,6 +850,20 @@ class PetEngine:
         self.anim = sprites.pet_states(self.pet)[0]
         self.frame_idx = 0
         self._build_frame_cache()
+        self._init_event_map()  # config map re-validated against the new anims
+
+    def _init_event_map(self):
+        """Resolve the config eventMap against THIS pet's anims: invalid
+        entries are dropped (they fall back to the default map), a non-dict
+        means no config map at all. Cached on self._event_map and written
+        back into cfg sanitized, so a later engine save never persists
+        garbage. Re-run on config_watch and set_pet."""
+        m = store.sanitize_event_map(
+            self.cfg.get("eventMap"),
+            [a["id"] for a in sprites.pet_states(self.pet)])
+        self._event_map = m
+        if m is not None:
+            self.cfg["eventMap"] = m
 
     def set_walk(self, pct):
         self.walk_factor = max(0.0, min(1.0, pct / 100.0))
@@ -856,11 +879,28 @@ class PetEngine:
             self._log("poke")
 
     def jump(self):
-        """Double click â€” a real leap."""
+        """Double click — a real leap."""
         if not self.dragging:
             self.phys["vy"] = -PHYS_JUMP_VY
             self.phys["grounded"] = False
         self._log("jump")
+
+    def walk_toward(self, direction):
+        """Directional control (arrow keys + follow-cursor): 'left'/'right'
+        start a walk in that direction (the existing walk physics ends it
+        after WALK_MIN_MS..RANGE), 'up' jumps when grounded. walk_factor 0
+        disables walking (jumping still works)."""
+        p = self.phys
+        if direction == "up":
+            if p["grounded"]:
+                self.jump()
+            return
+        if direction not in ("left", "right") or self.walk_factor <= 0:
+            return
+        p["mode"] = "walk"
+        p["vx"] = (1 if direction == "right" else -1) * (
+            WALK_SPEED_MIN + random.random() * WALK_SPEED_RANGE)
+        p["walkT"] = 0
 
     def set_topmost(self, on):
         self.win.set_topmost(on)
@@ -909,7 +949,7 @@ class PetEngine:
 
     def _anim_id(self):
         our = self._state()
-        m = self.pet.get("map") or sprites.DEFAULT_MAP
+        m = getattr(self, "_event_map", None) or self.pet.get("map") or sprites.DEFAULT_MAP
         if not self.phys["grounded"]:
             if any(s["id"] == "jumping" for s in sprites.pet_states(self.pet)):
                 return "jumping"
@@ -1111,6 +1151,35 @@ class PetEngine:
             self._spawn()
         self._frame_advance()
         self._present()
+        self._snapshot_state()
+
+    def _snapshot_state(self):
+        """Persist live pet state for the dashboard API (cross-process: the
+        control process can't touch the engine, so it reads pet-state.json).
+        Throttled to ~2Hz and only on real change; never raises."""
+        now = time.time()
+        if now - getattr(self, "_last_snap_t", 0.0) < 0.5:
+            return
+        try:
+            st = self._state()
+            an = self._anim_id()
+            snap = (st, an, self.mood, bool(self.dragging))
+            if snap == getattr(self, "_last_snap", None):
+                return
+            self._last_snap = snap
+            self._last_snap_t = now
+            json.dump({
+                "raw": self._raw_state(),
+                "state": st,
+                "anim": an,
+                "mood": self.mood,
+                "eventMap": self._event_map or self.pet.get("map") or sprites.DEFAULT_MAP,
+                "arrows": bool(self.cfg.get("arrows", True)),
+                "followCursor": bool(self.cfg.get("followCursor", True)),
+                "drag": bool(self.dragging),
+            }, open(store.state_file_path(), "w", encoding="utf-8"))
+        except Exception:
+            pass
 
     def _spawn(self):
         self.phys["spawned"] = True
@@ -1319,6 +1388,22 @@ class PetEngine:
             if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
                 self.cfg[key] = bool(c[key])
                 changed = True
+        # user-control toggles: followCursor (pet follows the mouse) and
+        # arrows (keyboard arrow control) — applied live like the others.
+        for key in ("followCursor", "arrows"):
+            if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
+                self.cfg[key] = bool(c[key])
+                changed = True
+        # eventMap: re-sanitize against THIS pet's anims and swap the cached
+        # resolution in place (invalid entries fall back to the default map)
+        if c.get("eventMap") is not None:
+            m = store.sanitize_event_map(
+                c["eventMap"], [a["id"] for a in sprites.pet_states(self.pet)])
+            if m != getattr(self, "_event_map", None):
+                self._event_map = m
+                if m is not None:
+                    self.cfg["eventMap"] = m
+                changed = True
         if c.get("breakSnooze") is not None:
             # one-shot command: arm the next break nudge to snooze, then delete
             # the key so it can't re-trigger every poll cycle
@@ -1399,6 +1484,7 @@ class PetEngine:
         self.os_active = input_ms < store.ACTIVE_MS
         self.os_app = _app.foreground_app()
         self._cursor = _app.cursor_pos()
+        self._follow_cursor_tick(now)
         self._update_bubble(now)
         # Random-idea greetings (weekday spirit, time-warp echo) run FIRST —
         # anything substantive (goal, dream, epoch) must win the bubble.
@@ -1428,6 +1514,9 @@ class PetEngine:
         self._barter_tick(now)
         # P8: lifestyle alerts (churn / idle-fog / Sunday week-end review)
         self._alert_tick(now)
+        # Task orchard: growth, weekly prune, harvest settlement, day-close
+        # haiku, and the "dancing toward" waggle (30s cadence gate).
+        self._orchard_tick(now)
         # P9: companion presence â€” typing bursts / cursor dwell are the
         # cheapest, then perch chatter on app change. Ran after the alert so
         # the alert's once-a-day line still wins the bubble.
@@ -1487,6 +1576,39 @@ class PetEngine:
             self._look_until = now + CURSOR_LOOK_SECS
             self._cursor_near_since = None
             self._log("cursorLook", px=int(px), py=int(py))
+
+    def _follow_cursor_tick(self, now):
+        """Follow-cursor (config followCursor, default on): while the screen
+        is active and the pet is grounded and not being dragged, a cursor
+        > 80px from the pet's center starts a walk toward it (throttled to
+        not re-target mid-walk); inside 40px a cursor-driven walk stops.
+        Reuses the existing walk physics, so left/right run anims come free
+        via _anim_id. walk_factor 0 disables walking entirely."""
+        if not self.cfg.get("followCursor", True):
+            return
+        if not self.os_active or not self.phys["grounded"] or self.dragging:
+            return
+        if self.walk_factor <= 0:
+            return
+        pos = self._cursor
+        if not pos:
+            return
+        left, top, right, bottom = self.area
+        cx = pos[0]
+        if not (left <= cx <= right):
+            return  # cursor outside the pet's workspace
+        w = self.pet["frameW"] * self.pet["scale"]
+        dx = cx - (self.phys["x"] + w / 2)
+        p = self.phys
+        if p["mode"] == "walk" and p["vx"] != 0:
+            if getattr(self, "_cursor_walk", False) and abs(dx) < 40:
+                p["mode"] = "idle"
+                p["vx"] = 0
+                self._cursor_walk = False
+            return  # throttle: don't re-target while a walk is in progress
+        if abs(dx) > 80:
+            self.walk_toward("right" if dx > 0 else "left")
+            self._cursor_walk = True
 
     def _perch_tick(self, now):
         """Workflow perch: when the foreground app changes, the pet
@@ -2254,10 +2376,213 @@ class PetEngine:
         self._cursor = None           # last polled cursor position (px, py)
         self._cursor_near_since = None
         self._last_cursor_look = 0.0
+        self._cursor_walk = False     # in-progress walk was follow-cursor driven
         self._look_until = 0.0        # brief thinking-flip toward the cursor
         self._perch_app = ""          # last observed foreground app
         self._last_perch = 0.0
         self._last_agent_error = 0.0
+
+    # ------------------------------------------------------- task orchard
+    def _init_orchard(self):
+        # The task list is a garden: tasks are trees that grow in matching
+        # soil while the user is active, ripen at their estimate, and are
+        # settled here (harvest XP, gamble wither, weekly prune, haiku).
+        self._last_orchard = 0.0       # maintenance cadence gate
+        self._orchard_cache = (0.0, None)  # (read time, tasks) for next-task
+        self._last_waggle = 0.0        # "dancing toward" bubble cooldown
+
+    def _orchard_tick(self, now):
+        """Garden maintenance, ~every ORCHARD_TICK_SECS: one locked pass over
+        tasks.json (growth/ripen, prune, harvest settlement, day-close haiku)
+        plus the ambient "dancing toward" waggle line."""
+        if now - getattr(self, "_last_orchard", 0.0) < ORCHARD_TICK_SECS:
+            return
+        self._last_orchard = now
+        store.update_tasks(lambda cur: self._orchard_pass(cur, now))
+        self._orchard_waggle(now)
+
+    def _orchard_pass(self, cur, now):
+        """One maintenance pass under the tasks.json lock; mutates cur in
+        place. The lock re-bases on fresh state so a concurrent dashboard
+        plant/harvest can never be clobbered by this pass's stale read."""
+        self._orchard_grow(cur, now)
+        self._orchard_prune(cur, now)
+        self._orchard_harvest(cur, now)
+        self._orchard_haiku(cur, now)
+        return cur
+
+    def _orchard_grow(self, cur, now):
+        """Growth accrual + ripe transitions. A tree grows only during ACTIVE
+        time in a matching soil, at most 1x real time (a tick adds at most
+        the wall time since the last tick; gaps like sleep never credit).
+        Ripe trees keep growing past their estimate — that's what makes the
+        gamble wither check possible."""
+        app_soil = store.soil_for_app(self.os_app)
+        for t in cur.get("tasks") or []:
+            if not isinstance(t, dict):
+                continue
+            st = t.get("status")
+            if st not in ("seed", "growing", "ripe"):
+                continue
+            try:
+                last = float(t.get("lastTs") or t.get("planted") or now)
+            except (TypeError, ValueError):
+                last = now
+            dt = now - last
+            t["lastTs"] = now
+            if dt < 0:
+                dt = 0.0  # clock skew / fresh write: never credit negative time
+            if dt > store.SLEEP_GAP_SECS or not self.os_active:
+                continue
+            if t.get("soil") != app_soil:
+                continue
+            t["invested"] = float(t.get("invested") or 0) + dt
+            t["updated"] = now
+            est = max(1, int(t.get("estMin") or 0)) * 60
+            if st in ("seed", "growing") and float(t.get("invested") or 0) >= est:
+                t["status"] = "ripe"
+                t["updated"] = now
+                self.bubble_text = "Task ripe: %s \u2014 harvest when ready" % (
+                    t.get("title") or "")
+                self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+                self._log("orchard", event="ripe", id=t.get("id"),
+                          title=t.get("title"), soil=t.get("soil"))
+                self._chime("complete")
+
+    def _orchard_prune(self, cur, now):
+        """Weekly prune (bonsai): due on Sunday's first tick, or any day when
+        the last prune is older than ORCHARD_PRUNE_DAYS. Trees in seed/growing
+        older than that are pruned and their estimate's energy returns to the
+        barter bank (forgiveness, not punishment). pruneDate guards against
+        re-running."""
+        today = time.strftime("%Y-%m-%d")
+        last = str(cur.get("pruneDate") or "")
+        days = None
+        if last:
+            try:
+                days = (datetime.date.today()
+                        - datetime.date.fromisoformat(last)).days
+            except ValueError:
+                days = store.ORCHARD_PRUNE_DAYS  # corrupt guard: overdue
+        due = time.localtime(now).tm_wday == 6 \
+            or (last and days >= store.ORCHARD_PRUNE_DAYS)
+        if not due:
+            return
+        cur["pruneDate"] = today
+        cutoff = now - store.ORCHARD_PRUNE_DAYS * 86400
+        for t in cur.get("tasks") or []:
+            if not isinstance(t, dict):
+                continue
+            if t.get("status") not in ("seed", "growing"):
+                continue
+            try:
+                age = now - float(t.get("planted") or 0)
+            except (TypeError, ValueError):
+                continue
+            if age <= store.ORCHARD_PRUNE_DAYS * 86400:
+                continue
+            t["status"] = "pruned"
+            t["updated"] = now
+            refund = max(1, int(t.get("estMin") or 0) // 5)
+            self._barter_bank = getattr(self, "_barter_bank", 0) + refund
+            self._save_barter()
+            self.bubble_text = "Pruned %s \u2014 %d min back to the bank" % (
+                t.get("title") or "", refund)
+            self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+            self._log("orchard", event="prune", id=t.get("id"),
+                      title=t.get("title"), refund=refund)
+
+    def _orchard_harvest(self, cur, now):
+        """Settle dashboard harvest-requests: the api marks a tree done; the
+        FIRST tick that sees it awards XP, tallies terroir, and applies the
+        gamble wither check. harvested guards against double awards (and the
+        write lands in the same locked pass, so a crash between read and
+        write can't double-award either)."""
+        for t in cur.get("tasks") or []:
+            if not isinstance(t, dict):
+                continue
+            if t.get("status") != "done" or t.get("harvested"):
+                continue
+            t["harvested"] = True
+            title = str(t.get("title") or "")
+            soil = str(t.get("soil") or "other")
+            try:
+                invested = float(t.get("invested") or 0)
+            except (TypeError, ValueError):
+                invested = 0.0
+            est = max(1, int(t.get("estMin") or 0)) * 60
+            gambled = bool(t.get("gambled"))
+            if gambled and invested > est * store.ORCHARD_GAMBLE_LIMIT:
+                # push-your-luck lost: the tree withered while it waited.
+                # No XP, no punishment — pruned quietly.
+                t["status"] = "pruned"
+                t["updated"] = now
+                self.bubble_text = "%s withered \u2014 the gamble ran long" % title
+                self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+                self._log("orchard", event="wither", id=t.get("id"),
+                          title=title, soil=soil)
+                continue
+            xp = XP_ORCHARD * (2 if gambled else 1)
+            self._award_xp(xp, "harvest")
+            self.mood = "happy"
+            self.bubble_text = "Harvested %s! +%d XP \u2728" % (title, xp)
+            self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+            self.attention_until = now + FOCUS_ATTENTION_SECS
+            terroir = cur.setdefault("terroir", {})
+            trow = terroir.setdefault(soil, {"harvests": 0, "mins": 0})
+            trow["harvests"] = int(trow.get("harvests") or 0) + 1
+            trow["mins"] = int(trow.get("mins") or 0) + int(invested) // 60
+            self._log("harvest", id=t.get("id"), title=title, soil=soil,
+                      xp=xp, gambled=gambled, invested=int(invested))
+            self._chime("complete")
+
+    def _orchard_haiku(self, cur, now):
+        """Day-close haiku (kuleshov of the day's garden): fires once per day
+        (haikuDate guard in tasks.json, survives restarts) at the quiet
+        dayclose hour when the garden had activity today. A 3-line 5-7-5
+        approximation built from real task names, never strict syllable math."""
+        today = time.strftime("%Y-%m-%d")
+        if str(cur.get("haikuDate") or "") == today:
+            return
+        if time.localtime(now).tm_hour < ORCHARD_HAIKU_HOUR:
+            return
+        if now < getattr(self, "attention_until", 0.0):
+            return
+        line = store.orchard_haiku(cur.get("tasks") or [])
+        if not line:
+            return
+        cur["haikuDate"] = today
+        self.bubble_text = line
+        self.bubble_until = now + RITUAL_BUBBLE_SECS
+        self._log("haiku", line=line)
+
+    def _orchard_waggle(self, now):
+        """Waggle-next: at most once per ORCHARD_WAGGLE_SECS the pet bubbles
+        the tree it's tending (the same pure rule the rail card shows).
+        Never overwrites a live substantive bubble (harvest/ripe/haiku)."""
+        if now - getattr(self, "_last_waggle", 0.0) < ORCHARD_WAGGLE_SECS:
+            return
+        if self.bubble_text and now < self.bubble_until:
+            return
+        nxt = self._orchard_next(now)
+        if not nxt:
+            return
+        self._last_waggle = now
+        self.bubble_text = "Dancing toward: %s (%s)" % (
+            nxt.get("title") or "", nxt.get("soil") or "")
+        self.bubble_until = now + APP_BUBBLE_SECS
+        self._log("waggle", id=nxt.get("id"), title=nxt.get("title"))
+
+    def _orchard_next(self, now):
+        """Best next tree to tend, read through a 10s cache (the pure rule
+        lives in store.orchard_next_task so the bubble and the rail card can
+        never disagree)."""
+        cache_t, cache = getattr(self, "_orchard_cache", (0.0, None))
+        if now - cache_t >= store.ORCHARD_CACHE_SECS:
+            cache = store.read_tasks()
+            self._orchard_cache = (now, cache)
+        tasks = (cache or {}).get("tasks") or []
+        return store.orchard_next_task(tasks, self.os_app)
 
     def _state_flap_median(self, now=None):
         """Median gap (seconds) between today's state transitions in this
