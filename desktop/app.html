@@ -1143,6 +1143,17 @@ body {
 .stage-chip {
   color: var(--thinking); background: rgba(127, 200, 232, 0.1); border-color: rgba(127, 200, 232, 0.3);
 }
+/* ---------- memory card (P4): dream line + epoch chips ---------- */
+.mem-dream { font-size: 12px; line-height: 1.55; color: var(--text); }
+.mem-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.epoch-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.03em;
+  padding: 3px 9px; border-radius: 999px;
+  color: #e8b04b; background: rgba(226, 162, 60, 0.12);
+  border: 1px solid rgba(226, 162, 60, 0.28);
+}
+.mem-empty { font-size: 12px; color: var(--text3); line-height: 1.5; }
 .prof { border-radius: var(--r-lg); }
 .prof-ava {
   width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font-size: 30px;
@@ -1681,6 +1692,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Pomodoro</div>
               <div id="pomoCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Memory</div>
+              <div id="memoryCard"></div>
             </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
@@ -2807,6 +2822,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         if (e.kind === "levelUp") return { t: "Level " + (e.level || "?") + "! \ud83c\udf89", cls: "celebrating" };
         if (e.kind === "focusDone") return { t: "Completed a " + (e.minutes || "?") + " min focus session", cls: "busy" };
         if (e.kind === "focusWilt") return { t: "Sprout wilted \u2014 focus broken", cls: "error" };
+        if (e.kind === "epoch") return { t: "Epoch \u2014 " + (e.name || "milestone") + " \u2728", cls: "celebrating" };
         if (e.kind === "state" && e.state === "success") return { t: "A task completed", cls: "success" };
         if (e.kind === "state" && e.state === "error") return { t: "Hit an error \u2014 pet stood by you", cls: "error" };
         return null;
@@ -2935,6 +2951,21 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           } else if (e.kind === "stretch") {
             text = "stretch break \u00b7 " + (e.mins || "?") + " min streak";
             cls = "success";
+          } else if (e.kind === "memory") {
+            text = "memory recall \u00b7 " + esc(e.template || "?");
+            cls = "thinking";
+          } else if (e.kind === "dream") {
+            text = "woke with a dream";
+            cls = "success";
+          } else if (e.kind === "wake") {
+            text = "woke from idle \u00b7 " + (e.idleSecs ? Math.round(e.idleSecs / 60) + " min away" : "welcome back");
+            cls = "success";
+          } else if (e.kind === "epoch") {
+            text = "epoch \u00b7 " + esc(e.name || "milestone");
+            cls = "celebrating";
+          } else if (e.kind === "petSwitch") {
+            text = "swapped pets";
+            cls = "busy";
           } else {
             text = e.kind;
           }
@@ -3074,6 +3105,32 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         if (!api) return;
         api.get_pomo_state().then(function (p) {
           if (p && typeof p === "object") renderPomo(p);
+        }).catch(function () {});
+      }
+
+      /* ---------- memory (P4): dream line + epoch markers ---------- */
+      var _memSig = "";
+      function renderMemory(m) {
+        var el = document.getElementById("memoryCard");
+        if (!el) return;
+        var sig = JSON.stringify(m || {});
+        if (sig === _memSig && el.childElementCount) return;
+        _memSig = sig;
+        m = m || {};
+        var dream = String(m.dream || "");
+        var chips = (m.epochFlags || []).map(function (f) {
+          return '<span class="epoch-chip" title="' + esc(f.desc || "") + '">\u2728 ' + esc(f.name || "") + '</span>';
+        }).join("");
+        var body = dream
+          ? '<div class="mem-dream">' + esc(dream) + '</div>'
+          : '<div class="mem-empty">The pet dreams of your day while you sleep \u2014 its dream journal opens on your first wake.</div>';
+        el.innerHTML = body + (chips ? '<div class="mem-chips">' + chips + '</div>' : "");
+      }
+
+      function refreshMemory() {
+        if (!api) return;
+        api.get_memory_state().then(function (m) {
+          if (m && typeof m === "object") renderMemory(m);
         }).catch(function () {});
       }
 
@@ -3462,6 +3519,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshProfile, 10000);
       setInterval(refreshGoal, 10000);
       setInterval(refreshPomo, 10000);
+      setInterval(refreshMemory, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

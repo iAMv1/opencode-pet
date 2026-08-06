@@ -19,7 +19,7 @@ _WEB_METHODS = [
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
-    "get_focus_peaks",
+    "get_focus_peaks", "get_memory_state",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -314,6 +314,26 @@ class ControlApi:
         return {"goalMin": goal_min, "todaySeconds": today_seconds,
                 "met": today_seconds >= goal_min * 60,
                 "streak": store.streak_from_history(history, goal_min * 60)}
+
+    def get_memory_state(self):
+        """Memory dashboard state: today's dream line, the daily recall
+        budget, and unlocked epoch markers (name + description for chips).
+
+        The dream is recomputed through the same deterministic build_dream the
+        pet uses at wake, so the card can never disagree with the bubble.
+        """
+        c = store.load_config()
+        flags = c.get("epochFlags") or []
+        flags = flags if isinstance(flags, list) else []
+        d = store.read_wellbeing()
+        dream = store.build_dream(d) if isinstance(d, dict) else ""
+        return {"wakeDate": str(c.get("wakeDate") or ""),
+                "dream": dream,
+                "memoryCount": int(c.get("memoryCount", 0) or 0),
+                "memoryMax": int(c.get("memoryMax", store.MEMORY_MAX_DEFAULT)
+                                 or store.MEMORY_MAX_DEFAULT),
+                "epochFlags": [{"id": eid, "name": name, "desc": desc}
+                               for (eid, name, desc) in store.EPOCHS if eid in flags]}
 
     def get_pomo_state(self):
         """Pomodoro cycle state for the dashboard rail card.

@@ -46,6 +46,29 @@ EVOLVE_LEVEL_2 = 5
 EVOLVE_LEVEL_3 = 10
 GOAL_DEFAULT_MIN = 120
 
+# ---------------------------------------------------------------- memory / wake
+MEMORY_MIN_DEFAULT = 60          # minutes of work time between memory bubbles
+MEMORY_MAX_DEFAULT = 3           # max memory bubbles per day
+WAKE_COOLDOWN_SECS = 4 * 3600    # min gap between long-idle wake greetings
+NIGHT_OWL_MIN_SECS = 4 * 3600    # a "night-owl day" has this much in hours 0-6
+LONG_DAY_MIN_SECS = 9 * 3600     # a "long day" epoch threshold
+TEN_HOUR_WINDOW_SECS = 10 * 3600 # 10-day rolling total for the ten-hours epoch
+XP_500_EPOCH = 500               # XP threshold for the five-hundred epoch
+
+# ---------------------------------------------------------------- epoch markers
+# Life-transition markers (P4): each fires once, guarded by config epochFlags.
+# Order = definition order; evaluate_epochs returns them in this order.
+EPOCHS = [
+    ("first_focus", "First Focus", "Your first completed focus session"),
+    ("first_week", "First Week", "7 days of history recorded"),
+    ("ten_hour_total", "Ten Hours", "10h of focus across 10 days"),
+    ("long_day", "Long Day", "First 9+ hour day"),
+    ("night_owl", "Night Owl", "First 4h+ night (midnight to 6am)"),
+    ("week_streak", "Week Streak", "First 7-day focus streak"),
+    ("xp_500", "Five Hundred", "First 500 XP earned"),
+    ("thirty_days", "One Month", "30 days of history recorded"),
+]
+
 def goal_minutes(cfg):
     try:
         return max(1, int(cfg.get("goalMin", GOAL_DEFAULT_MIN)))
@@ -65,7 +88,10 @@ def load_config():
                "goalMin": GOAL_DEFAULT_MIN, "lastGoalDate": "",
                "stretchMin": 45, "chimes": True,
                "pomoMin": 25, "pomoShort": 5, "pomoLong": 15,
-               "pomoCount": 0, "pomoDate": ""}
+               "pomoCount": 0, "pomoDate": "",
+               "wakeDate": "", "wakeIdleAt": 0,
+               "memoryMin": MEMORY_MIN_DEFAULT, "memoryMax": MEMORY_MAX_DEFAULT,
+               "memoryDate": "", "memoryCount": 0, "epochFlags": []}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -364,3 +390,185 @@ def focus_progress(active, started_at, target_min, now=None):
         return 0.0
     el = (now if now is not None else time.time()) - float(started_at)
     return max(0.0, min(1.0, el / max(1, float(target_min) * 60)))
+
+
+# ---------------------------------------------------------------- dream journal
+def _fmt_hours(secs):
+    """Seconds -> '9.3h' style label for dream lines."""
+    return "%.1fh" % (int(secs) / 3600.0)
+
+
+def deepest_day(history):
+    """(date, seconds) of the day with the most focus in a history dict.
+    Ties resolve to the newest day (same rule as week_window)."""
+    hist = history or {}
+    if not hist:
+        return None, 0
+    day = max(hist, key=lambda d: (int(hist.get(d, 0) or 0), d))
+    return day, int(hist.get(day, 0) or 0)
+
+
+def latest_hour(hour_history):
+    """(hour, seconds) of the busiest hour-of-day across ALL recorded days.
+    Ties resolve to the earliest hour."""
+    agg = [0] * 24
+    for day_map in (hour_history or {}).values():
+        if not isinstance(day_map, dict):
+            continue
+        for h, s in day_map.items():
+            if isinstance(s, (int, float)) and (isinstance(h, int) or str(h).isdigit()):
+                agg[int(h) % 24] += int(s)
+    best = max(range(24), key=lambda h: (agg[h], -h))
+    return best, agg[best]
+
+
+def _dream_day(d):
+    """(date, seconds) of the latest COMPLETED day with data: the newest
+    calendar day before today that has recorded focus, folding the file's
+    live apps map in when the file itself holds that day (pet was off)."""
+    today = datetime.date.today().isoformat()
+    hist = d.get("history") if isinstance(d.get("history"), dict) else {}
+    candidates = set()
+    fdate = d.get("date")
+    if isinstance(fdate, str) and fdate and fdate < today:
+        candidates.add(fdate)
+    for day in hist:
+        if isinstance(day, str) and day < today:
+            candidates.add(day)
+    for day in sorted(candidates, reverse=True):
+        secs = int(hist.get(day, 0) or 0)
+        if d.get("date") == day and isinstance(d.get("apps"), dict):
+            secs += int(sum(v for v in d["apps"].values() if isinstance(v, (int, float))))
+        if secs > 0:
+            return day, secs
+    return None, 0
+
+
+def build_dream(wellbeing):
+    """Yesterday's digest for the wake ritual — a pure, deterministic string.
+
+    Picks one template by the shape of yesterday's data (deepest day, record
+    day, night owl, idle-heavy, most apps, quiet, or a plain summary). No
+    randomness: the same wellbeing dict always yields the same dream, so the
+    pet's bubble and the dashboard card can never disagree. Empty string when
+    there is no completed day of data yet.
+    """
+    d = wellbeing
+    if not isinstance(d, dict):
+        return ""
+    hist = d.get("history") if isinstance(d.get("history"), dict) else {}
+    hour_hist = d.get("hourHistory") if isinstance(d.get("hourHistory"), dict) else {}
+    app_hist = d.get("appHistory") if isinstance(d.get("appHistory"), dict) else {}
+    day, total = _dream_day(d)
+    if day is None or total <= 0:
+        return ""
+    # yesterday's own hour buckets (falls back to the global best hour)
+    day_hours = hour_hist.get(day) if isinstance(hour_hist.get(day), dict) else {}
+    best_h, best_s = latest_hour(hour_hist)
+    best_line = ""
+    if (day_hours or best_s > 0) and best_s > 0:
+        best_line = " Best hour: %s." % hour_label(best_h)
+    # per-app breakdown for that day (history + live apps map)
+    day_apps = dict(app_hist.get(day)) if isinstance(app_hist.get(day), dict) else {}
+    if d.get("date") == day and isinstance(d.get("apps"), dict):
+        for a, s in d["apps"].items():
+            if isinstance(s, (int, float)):
+                day_apps[a] = day_apps.get(a, 0) + int(s)
+    deepest, _ = deepest_day(hist)
+    if day == deepest and total >= LONG_DAY_MIN_SECS:
+        return ("I dreamt of terminals\u2026 yesterday was your record day \u2014 %s.%s"
+                % (_fmt_hours(total), best_line))
+    if day == deepest:
+        return ("I dreamt of terminals\u2026 yesterday was your deepest day (%s).%s"
+                % (_fmt_hours(total), best_line))
+    if best_h < 6 and best_s > 0:
+        return ("I dreamt of terminals\u2026 best hour %s \u2014 you're a night owl.%s"
+                % (hour_label(best_h), best_line))
+    idle = int(day_apps.get("Idle", 0) or 0)
+    if total > 0 and idle >= total * 0.5:
+        return "I dreamt of terminals\u2026 yesterday was mostly idle. Rest counts too."
+    app_names = [a for a in day_apps if a != "Idle"]
+    if len(app_names) >= 5:
+        return "I dreamt of terminals\u2026 yesterday you touched %d apps." % len(app_names)
+    if total < 3600:
+        return "I dreamt of terminals\u2026 yesterday was quiet \u2014 I slept well too."
+    top = max(app_names, key=day_apps.get) if app_names else ""
+    line = "I dreamt of terminals\u2026 yesterday: %s." % _fmt_hours(total)
+    if top:
+        line += " %s led the way." % top
+    return line
+
+
+# ---------------------------------------------------------------- epoch markers
+def _epoch_conditions(history, hour_history, config, xp, focus_count=0):
+    """Set of epoch ids whose thresholds the data now crosses (regardless of
+    whether they were celebrated before). Pure; the engine/UI both build on it."""
+    cfg = config or {}
+    today = datetime.date.today()
+    hist = history or {}
+    hour_hist = hour_history or {}
+
+    def day_secs(day):
+        return int(hist.get(day, 0) or 0)
+
+    days = [dd for dd in hist if isinstance(dd, str) and dd <= today.isoformat()]
+    active_days = [dd for dd in days if day_secs(dd) > 0]
+    out = set()
+    if int(focus_count or 0) >= 1:
+        out.add("first_focus")
+    if len(active_days) >= 7:
+        out.add("first_week")
+    last10 = [(today - datetime.timedelta(days=i)).isoformat() for i in range(10)]
+    if sum(day_secs(dd) for dd in last10) >= TEN_HOUR_WINDOW_SECS:
+        out.add("ten_hour_total")
+    if any(day_secs(dd) >= LONG_DAY_MIN_SECS for dd in days):
+        out.add("long_day")
+    for day_map in hour_hist.values():
+        if not isinstance(day_map, dict):
+            continue
+        night = sum(int(s) for h, s in day_map.items()
+                    if isinstance(s, (int, float))
+                    and (isinstance(h, int) or str(h).isdigit()) and int(h) < 6)
+        if night >= NIGHT_OWL_MIN_SECS:
+            out.add("night_owl")
+            break
+    if streak_from_history(hist) >= 7:
+        out.add("week_streak")
+    if int(xp or 0) >= XP_500_EPOCH:
+        out.add("xp_500")
+    if len(active_days) >= 30:
+        out.add("thirty_days")
+    return out
+
+
+def evaluate_epochs(history, hour_history, config, xp, focus_count=0):
+    """Crossed life-transition markers NOT yet recorded in config['epochFlags'].
+
+    Returns [(id, name, desc), ...] in EPOCHS definition order. Each epoch
+    fires exactly once in its life: once an id lands in epochFlags it is
+    filtered out here, so re-evaluating is idempotent."""
+    crossed = _epoch_conditions(history, hour_history, config, xp, focus_count)
+    flags = set((config or {}).get("epochFlags") or [])
+    return [(eid, name, desc) for (eid, name, desc) in EPOCHS
+            if eid in crossed and eid not in flags]
+
+
+def best_streak(history, threshold=STREAK_MIN_SECS):
+    """Longest consecutive run of >= threshold days anywhere in a history
+    dict (the all-time record, not the live chain). Used by memory bubbles to
+    tell "never done before" from "matches your best"."""
+    hist = history or {}
+    best = run = 0
+    prev = None
+    for dd in sorted(hist):
+        ok = int(hist.get(dd, 0) or 0) >= threshold
+        if ok and prev is not None:
+            prev_d = datetime.date.fromisoformat(prev)
+            gap = (datetime.date.fromisoformat(dd) - prev_d).days
+            run = run + 1 if gap == 1 else 1
+        else:
+            run = 1 if ok else 0
+        prev = dd
+        if run > best:
+            best = run
+    return best

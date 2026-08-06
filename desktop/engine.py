@@ -49,6 +49,19 @@ STRETCH_DEFAULT_MIN = 45    # continuous-work threshold (0 = off)
 STRETCH_COOLDOWN_SECS = 1800  # max 1 stretch nudge per 30 min
 XP_STRETCH = 2
 
+# ---------------------------------------------------------------- memory / wake ritual
+WAKE_BUBBLE_SECS = 5.0      # wake greeting bubble lifetime
+WAKE_LINES = [
+    "Back! I kept the seat warm.",
+    "You were gone a while \u2014 welcome back.",
+    "Rise and shine. Terminals missed you.",
+    "Awake again. Let's make it count.",
+]
+MEMORY_BUBBLE_SECS = 5.0    # memory recall bubble lifetime
+MEMORY_SHIMMER_SECS = 4.0   # brief happy shimmer after a recall (no XP)
+XP_EPOCH = 25               # epoch crossings ARE earned milestones
+EPOCH_BUBBLE_SECS = 5.0     # epoch celebration bubble lifetime
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -102,6 +115,7 @@ class PetEngine:
         self._init_physics()
         self._init_focus()
         self._init_growth()
+        self._init_memory()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -173,6 +187,25 @@ class PetEngine:
         self.level = int(self.cfg.get("level", 1))
         self.mood = "neutral"
         self._last_tool_earn = ""
+
+    def _init_memory(self):
+        # wake ritual: idle->active transitions + the once-per-day dream
+        self._was_active = False
+        self._idle_since = time.time()
+        self._first_tick = True
+        self._last_idle_wake = float(self.cfg.get("wakeIdleAt", 0) or 0)
+        # episodic memory bubbles: memoryMin minutes of WORK time between
+        # recalls (jittered 0.75-1.25x -> 45-75 min at the default 60), max
+        # memoryMax per day (counter in config so restarts can't reset it)
+        self.memory_min = max(1, int(self.cfg.get("memoryMin", store.MEMORY_MIN_DEFAULT)))
+        self.memory_max = max(1, int(self.cfg.get("memoryMax", store.MEMORY_MAX_DEFAULT)))
+        self._memory_work = 0.0
+        self._next_memory_work = self.memory_min * 60 * random.uniform(0.75, 1.25)
+        self._shimmer_until = 0.0
+        self._shimmer_mood = None
+        # epoch crossings: one celebration per marker, ever
+        self._last_fc_read = 0.0
+        self._focus_count_cache = 0
 
     def _log(self, kind, **data):
         """Append one JSON line to THIS pet's activity log — one pet, one memory."""
@@ -431,6 +464,12 @@ class PetEngine:
 
     def _mood_tick(self):
         """Recalculate mood from recent state when nothing else changed it."""
+        # memory recall shimmer: restore the pre-recall mood after a few secs
+        if getattr(self, "_shimmer_until", 0) and time.time() >= self._shimmer_until:
+            if self.mood == "happy" and getattr(self, "_shimmer_mood", None) is not None:
+                self.mood = self._shimmer_mood
+            self._shimmer_until = 0.0
+            self._shimmer_mood = None
         if self.mood in ("happy",):
             return  # keep celebration mood until something else happens
         if self.os_active and self.break_min > 0 and self.break_track_start \
@@ -540,6 +579,7 @@ class PetEngine:
             app = self.os_app or "Desktop"
             if app in ("Explorer", "Program Manager"):
                 app = "Desktop"
+            self._memory_work = getattr(self, "_memory_work", 0.0) + dt  # work time feeds recalls
         self._wb[app] = self._wb.get(app, 0) + dt
         # hour-of-day bucket (used by the "best focus time" analysis)
         if getattr(self, "_hour_today", None) is not None:
@@ -686,6 +726,7 @@ class PetEngine:
         self.cfg["petIdx"] = idx
         store.save_config(self.cfg)
         self.pet = sprites.PETS[idx]
+        self._log("petSwitch", toIdx=idx)  # the NEW pet remembers the switch
         self._load_sheet()
         self.anim = sprites.pet_states(self.pet)[0]
         self.frame_idx = 0
@@ -1177,6 +1218,12 @@ class PetEngine:
         self._track_app_time()
         # daily focus goal runs last so its bubble wins over tool/state lines
         self._goal_tick()
+        # P4: wake ritual (dream + long-idle greeting), episodic recall, and
+        # epoch crossings run AFTER goal so the substantive moments win the
+        # bubble over tool/state lines.
+        self._wake_tick(now)
+        self._memory_tick(now)
+        self._epoch_tick(now)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1295,3 +1342,208 @@ class PetEngine:
             self._award_xp(XP_STRETCH, "stretch")
             self._log("stretch", mins=int(since / 60))
             self._chime("stretch")
+
+    # ------------------------------------------------------- wake ritual + dream
+    def _try_dream(self, now):
+        """First wake of a new day: bubble the dream journal digest of
+        yesterday. Once per day, guarded by the wakeDate config key (survives
+        restarts). No data yet -> stay quiet and retry on the next wake."""
+        today = time.strftime("%Y-%m-%d")
+        if str(self.cfg.get("wakeDate") or "") == today:
+            return
+        d = store.read_wellbeing()
+        dream = store.build_dream(d) if isinstance(d, dict) else ""
+        if not dream:
+            return
+        self.cfg["wakeDate"] = today
+        try:
+            c = store.load_config()
+            c["wakeDate"] = today
+            store.save_config(c)
+        except Exception:
+            pass
+        self.bubble_text = dream
+        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self.attention_until = now + FOCUS_ATTENTION_SECS
+        self._log("dream")
+
+    def _wake_tick(self, now):
+        """Wake moments: process start of a new day (dream) and the first
+        non-idle after a long idle (greeting, 4h cooldown)."""
+        if self._first_tick:
+            self._first_tick = False
+            if self.os_active:
+                self._try_dream(now)
+                self._was_active = True
+                return
+        if self.os_active and not self._was_active:
+            idle_secs = now - self._idle_since
+            if idle_secs > store.SLEEP_GAP_SECS \
+                    and now - self._last_idle_wake >= store.WAKE_COOLDOWN_SECS:
+                self._last_idle_wake = now
+                try:
+                    c = store.load_config()
+                    c["wakeIdleAt"] = now
+                    store.save_config(c)
+                except Exception:
+                    pass
+                self.bubble_text = random.choice(WAKE_LINES)
+                self.bubble_until = now + WAKE_BUBBLE_SECS
+                self._log("wake", idleSecs=int(idle_secs))
+            self._try_dream(now)
+        elif not self.os_active and self._was_active:
+            self._idle_since = now
+        self._was_active = self.os_active
+
+    # ------------------------------------------------------- episodic memory
+    def _read_memory_events(self, limit=200):
+        """Last N events from THIS pet's activity log (one pet, one memory)."""
+        try:
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+                      encoding="utf-8") as fh:
+                lines = fh.readlines()
+            out = []
+            for line in lines[-limit:]:
+                try:
+                    out.append(json.loads(line))
+                except Exception:
+                    continue
+            return out
+        except Exception:
+            return []
+
+    def _memory_line(self):
+        """Pick one recall with REAL numbers from the activity log. Template
+        priority is deterministic: streak record, longest session, pet
+        switches, first session of the day, weekly session count, fallback."""
+        events = self._read_memory_events()
+        now = time.time()
+        today = time.strftime("%Y-%m-%d")
+        focus_done = [e for e in events if e.get("kind") == "focusDone"]
+        # 1. streak milestone: "never done before" vs "matches your best"
+        cur = self._streak_days()
+        if cur >= 3:
+            cutoff = (datetime.date.today() - datetime.timedelta(days=cur)).isoformat()
+            before = {d: v for d, v in self._history.items() if d < cutoff}
+            best_prev = store.best_streak(before)
+            if cur > best_prev:
+                return ("%d days in a row \u2014 never done before." % cur, "streak_record")
+            if cur == best_prev:
+                return ("%d days in a row \u2014 matches your best run." % cur, "streak_match")
+        # 2. session length record
+        if focus_done:
+            longest = max(focus_done, key=lambda e: float(e.get("minutes", 0) or 0))
+            mins = int(longest.get("minutes", 0) or 0)
+            if mins >= 25:
+                day = time.strftime("%b %d", time.localtime(longest.get("t", now)))
+                return ("Longest session: %d min, %s." % (mins, day), "session_record")
+        # 3. pet-switch memory (real user reality: high switch frequency)
+        switches = [e for e in events if e.get("kind") == "petSwitch"]
+        if len(switches) >= 2:
+            day = time.strftime("%b %d", time.localtime(switches[0].get("t", now)))
+            same = all(time.strftime("%Y-%m-%d", time.localtime(s.get("t", now))) ==
+                       time.strftime("%Y-%m-%d", time.localtime(switches[0].get("t", now)))
+                       for s in switches)
+            when = "on %s" % day if same else "recently"
+            return ("You swapped pets %d times %s." % (len(switches), when), "pet_switch")
+        # 4. first session of the day
+        starts = [e for e in events if e.get("kind") == "focusStart"
+                  and time.strftime("%Y-%m-%d", time.localtime(e.get("t", now))) == today]
+        if starts:
+            first = min(starts, key=lambda e: e.get("t", now))
+            hm = time.strftime("%H:%M", time.localtime(first.get("t", now)))
+            return ("First focus today at %s \u2014 a fresh start." % hm, "first_of_day")
+        # 5. recent-focused-session count
+        done_week = [e for e in focus_done if now - (e.get("t") or 0) < store.WEEK_SECS]
+        if len(done_week) >= 2:
+            return ("%d focus sessions in the last 7 days." % len(done_week), "session_count")
+        # 6. fallback
+        if len(events) >= 5:
+            return ("I remember %d moments with you \u2014 busy day." % len(events), "busy_day")
+        return ("I remember this week. The quiet ones count too.", "quiet_week")
+
+    def _memory_tick(self, now):
+        """Episodic recall: after memoryMin minutes of WORK time (jittered),
+        bubble a real past event. No XP — a bubble and a brief mood shimmer
+        only. Max memoryMax recalls per day (config-guarded daily counter)."""
+        if not self.os_active:
+            return
+        if self._memory_work < self._next_memory_work:
+            return
+        c = store.load_config()
+        today = time.strftime("%Y-%m-%d")
+        if c.get("memoryDate") != today:
+            count = 0
+        else:
+            count = int(c.get("memoryCount", 0) or 0)
+        if count >= self.memory_max:
+            self._memory_work = 0.0  # budget spent for today; stop accumulating
+            return
+        line, tpl = self._memory_line()
+        if not line:
+            return
+        self._memory_work = 0.0
+        self._next_memory_work = self.memory_min * 60 * random.uniform(0.75, 1.25)
+        try:
+            c2 = store.load_config()
+            c2["memoryCount"] = count + 1
+            c2["memoryDate"] = today
+            store.save_config(c2)
+        except Exception:
+            pass
+        self.cfg["memoryCount"] = count + 1
+        self.cfg["memoryDate"] = today
+        self.bubble_text = line
+        self.bubble_until = now + MEMORY_BUBBLE_SECS
+        self._log("memory", template=tpl)
+        # mood shimmer (aura) instead of XP: brief happy, then restore
+        self._shimmer_mood = self.mood
+        self.mood = "happy"
+        self._shimmer_until = now + MEMORY_SHIMMER_SECS
+
+    def _focus_count(self):
+        """All-time completed focus sessions for THIS pet (cached 60s — the
+        log read is the only slightly-pricey part of the epoch check)."""
+        now = time.time()
+        if now - self._last_fc_read < 60:
+            return self._focus_count_cache
+        self._last_fc_read = now
+        n = 0
+        try:
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        if json.loads(line).get("kind") == "focusDone":
+                            n += 1
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        self._focus_count_cache = n
+        return n
+
+    def _epoch_tick(self, now):
+        """Life-transition markers: when a pure threshold in the data crosses,
+        celebrate ONCE (25 XP — these ARE earned, not spam) and record the
+        epoch id in config so it can never re-fire."""
+        flags = list(self.cfg.get("epochFlags") or [])
+        crossed = store.evaluate_epochs(self._history, self._hour_history,
+                                        self.cfg, self.xp, self._focus_count())
+        if not crossed:
+            return
+        eid, name, desc = crossed[0]
+        flags.append(eid)
+        self.cfg["epochFlags"] = flags
+        try:
+            c = store.load_config()
+            c["epochFlags"] = flags
+            store.save_config(c)
+        except Exception:
+            pass
+        self._award_xp(XP_EPOCH, "epoch")
+        self.mood = "happy"
+        self.bubble_text = "%s \u2014 %s" % (name, desc)
+        self.bubble_until = now + EPOCH_BUBBLE_SECS
+        self.attention_until = now + FOCUS_ATTENTION_SECS
+        self._log("epoch", id=eid, name=name)
