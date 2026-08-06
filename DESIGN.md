@@ -63,6 +63,20 @@ panel — calm, precise, alive.
 - Data numerals: `"Cascadia Mono", Consolas` + `font-variant-numeric: tabular-nums`.
 - Values / stats: 600–650 weight, tabular, accent-tinted.
 
+## Day-body aura (data-embodiment)
+The pet's body IS the day's data: an aura overlay per embodied state, alpha
+scaled by intensity. Tokens below match `store.EMBODY_AURA` (single source of
+truth — engine and dashboard must never disagree).
+
+| State   | Aura (rgba)      | Meaning                                    |
+|---------|------------------|--------------------------------------------|
+| fog     | `125 128 145 .18`| day mostly idle — pet droops               |
+| bloom   | `255 205 110 .24`| daily goal met / deep focus flowing        |
+| storm   | `226 84 84 .22`  | session errored or focus wilted            |
+| ember   | `255 118 46 .22` | ≥4 saturated deep hours today              |
+| quiet   | none             | day not started — resting                  |
+| flow    | none             | steady progress — chrono gene glow only    |
+
 ## States
 - **Loading**: skeleton shimmer bars (already present) — keep, tint to bg2→bg3.
 - **Empty**: centered art tile (icon on a soft ring) + short line, muted accent hint.

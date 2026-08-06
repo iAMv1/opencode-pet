@@ -420,6 +420,7 @@ body {
 .stat {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border); border-radius: var(--r-md);
+}
 
 /* ---------- session filters, search, toolbar ---------- */
 .filters { margin-bottom: 14px; gap: 7px; }
@@ -569,6 +570,10 @@ body {
 }
 .min-chip:hover { color: var(--text); border-color: var(--border2); }
 .min-chip[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, #ffd089, var(--accent) 60%, var(--accent2));
+  border-color: transparent; box-shadow: var(--accent-glow);
+}
 
 /* ---------- heatmap ---------- */
 .hm-cell { border-radius: 4px; }
@@ -656,6 +661,8 @@ body {
 .wrap { border-radius: var(--r-lg); }
 .wrap-eyebrow {
   font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent);
+}
 
 /* ---------- pets & behavior ---------- */
 #pets { gap: 10px; }
@@ -1011,17 +1018,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
-  color: var(--accent);
-}
 .wrap-title {
   font-size: 34px; font-weight: 680; letter-spacing: -0.02em; line-height: 1.05;
   background: linear-gradient(180deg, #ffd089 10%, var(--accent2) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-}
-
-  color: var(--accent-ink);
-  background: linear-gradient(135deg, #ffd089, var(--accent) 60%, var(--accent2));
-  border-color: transparent; box-shadow: var(--accent-glow);
 }
 .fsess-btn { font-weight: 600; }
 
@@ -1029,9 +1029,16 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 
 .ses-detail {
   background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border); border-radius: var(--r-md);
+  border-radius: var(--r-md);
+  display: block; margin-top: 0; padding: 0 12px;
+  border: 1px solid transparent;
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.24s var(--ease), margin-top 0.24s var(--ease),
+    padding 0.24s var(--ease), border-color 0.24s var(--ease);
 }
-
+.ses.expanded .ses-detail {
+  max-height: 130px; margin-top: 8px; padding-top: 9px; padding-bottom: 9px;
+  border-color: var(--border); overflow-y: auto;
 }
 .stat b { font-size: 18px; font-weight: 660; }
 
@@ -1050,6 +1057,18 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 /* session feed card rows share the glass language */
 .ses { border-radius: var(--r-md); }
 .ses:hover .ses-title { color: var(--accent); }
+
+/* focusable rows (tabindex="0"): visible ring + glass hover hairline */
+.ses:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ses {
+  transition: border-color 0.18s var(--ease), background 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
+}
+.ses:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.008));
+  border-top-color: var(--border2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
 
 </style>
 </head>
@@ -1121,6 +1140,76 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
               <input type="range" id="brkMin" min="20" max="120" step="5" value="50" aria-label="Break reminder minutes">
               <div class="range-ends" aria-hidden="true"><span>20 min</span><span>2 hours</span></div>
             </div>
+            <div class="row" style="margin-top:10px">
+              <span class="lab">When break time hits</span>
+              <button class="btn" id="snooze" type="button">Snooze 5 min</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Stretch reminder</span>
+              <div class="hint">A stretch nudge after continuous work</div>
+            </div>
+            <button class="switch" id="str" role="switch" aria-checked="false" aria-label="Stretch reminder"></button>
+          </div>
+          <div id="strRow" hidden>
+            <div class="row">
+              <span class="lab">Every</span>
+              <span class="val" id="strVal">45 min</span>
+            </div>
+            <div class="slider-wrap">
+              <input type="range" id="strMin" min="15" max="120" step="5" value="45" aria-label="Stretch reminder minutes">
+              <div class="range-ends" aria-hidden="true"><span>15 min</span><span>2 hours</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Chimes</span>
+              <div class="hint">Soft sounds for focus, breaks, and stretches</div>
+            </div>
+            <button class="switch" id="chimes" role="switch" aria-checked="true" aria-label="Chimes"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">React to typing</span>
+              <div class="hint">A little bounce when you type in a burst</div>
+            </div>
+            <button class="switch" id="reactTyping" role="switch" aria-checked="true" aria-label="React to typing"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">React to cursor</span>
+              <div class="hint">The pet looks your way when the cursor lingers near</div>
+            </div>
+            <button class="switch" id="reactCursor" role="switch" aria-checked="true" aria-label="React to the cursor"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Perch chatter</span>
+              <div class="hint">A comment when you switch apps</div>
+            </div>
+            <button class="switch" id="perchChatter" role="switch" aria-checked="true" aria-label="Perch chatter"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Mirror your agent</span>
+              <div class="hint">React to what your AI agent is doing</div>
+            </div>
+            <button class="switch" id="agentMirror" role="switch" aria-checked="true" aria-label="Mirror your agent"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Idle sitting</span>
+              <div class="hint">Sits still after a couple of minutes away</div>
+            </div>
+            <button class="switch" id="wanderIdle" role="switch" aria-checked="true" aria-label="Idle sitting"></button>
           </div>
         </div>
       </section>
@@ -1143,7 +1232,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     (function () {
       "use strict";
       var api = null;
-      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, pets: [], petName: "", stateLabel: "" };
+      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, stretchMin: 45, chimes: true, reactTyping: true, reactCursor: true, perchChatter: true, agentMirror: true, wanderIdle: true, pets: [], petName: "", stateLabel: "" };
       var saveTimer = null;
 
       var statusEl = document.getElementById("status");
@@ -1287,7 +1376,14 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             petIdx: state.petIdx,
             walk: state.walk,
             alwaysOnTop: state.alwaysOnTop,
-            breakMin: state.breakMin
+            breakMin: state.breakMin,
+            stretchMin: state.stretchMin,
+            chimes: state.chimes,
+            reactTyping: state.reactTyping,
+            reactCursor: state.reactCursor,
+            perchChatter: state.perchChatter,
+            agentMirror: state.agentMirror,
+            wanderIdle: state.wanderIdle
           });
           setStatus("Saved", "ok");
           setTimeout(function () { if (statusEl.textContent === "Saved") setStatus(""); }, 1800);
@@ -1311,6 +1407,20 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         bm.value = mins;
         bm.style.setProperty("--fill", (mins - 20) / 100 * 100 + "%");
         document.getElementById("brkVal").textContent = mins + " min";
+        var onStr = state.stretchMin > 0;
+        document.getElementById("str").setAttribute("aria-checked", String(onStr));
+        document.getElementById("strRow").hidden = !onStr;
+        var sMin = state.stretchMin > 0 ? state.stretchMin : 45;
+        var sm = document.getElementById("strMin");
+        sm.value = sMin;
+        sm.style.setProperty("--fill", (sMin - 15) / 105 * 100 + "%");
+        document.getElementById("strVal").textContent = sMin + " min";
+        document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
+        document.getElementById("reactTyping").setAttribute("aria-checked", String(state.reactTyping));
+        document.getElementById("reactCursor").setAttribute("aria-checked", String(state.reactCursor));
+        document.getElementById("perchChatter").setAttribute("aria-checked", String(state.perchChatter));
+        document.getElementById("agentMirror").setAttribute("aria-checked", String(state.agentMirror));
+        document.getElementById("wanderIdle").setAttribute("aria-checked", String(state.wanderIdle));
       }
 
       function syncPetVisible(vis) {
@@ -1351,6 +1461,27 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             bm.style.setProperty("--fill", (mins - 20) / 100 * 100 + "%");
             document.getElementById("brkVal").textContent = mins + " min";
           }
+          if (typeof c.stretchMin === "number" && document.activeElement !== document.getElementById("strMin")) {
+            state.stretchMin = c.stretchMin;
+            var onStr = state.stretchMin > 0;
+            document.getElementById("str").setAttribute("aria-checked", String(onStr));
+            document.getElementById("strRow").hidden = !onStr;
+            var sMin = state.stretchMin > 0 ? state.stretchMin : 45;
+            var sm = document.getElementById("strMin");
+            sm.value = sMin;
+            sm.style.setProperty("--fill", (sMin - 15) / 105 * 100 + "%");
+            document.getElementById("strVal").textContent = sMin + " min";
+          }
+          if (c.chimes != null && c.chimes !== state.chimes) {
+            state.chimes = c.chimes;
+            document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
+          }
+          ["reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"].forEach(function (k) {
+            if (c[k] != null && c[k] !== state[k]) {
+              state[k] = c[k];
+              document.getElementById(k).setAttribute("aria-checked", String(state[k]));
+            }
+          });
           syncPetVisible(c.petVisible !== false);
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
@@ -1375,6 +1506,13 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           state.alwaysOnTop = c.alwaysOnTop !== false;
           state.petVisible = c.petVisible !== false;
           state.breakMin = typeof c.breakMin === "number" ? c.breakMin : 50;
+          state.stretchMin = typeof c.stretchMin === "number" ? c.stretchMin : 45;
+          state.chimes = c.chimes !== false;
+          state.reactTyping = c.reactTyping !== false;
+          state.reactCursor = c.reactCursor !== false;
+          state.perchChatter = c.perchChatter !== false;
+          state.agentMirror = c.agentMirror !== false;
+          state.wanderIdle = c.wanderIdle !== false;
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
         } catch (e) {}
@@ -1417,6 +1555,42 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         state.breakMin = +e.target.value;
         document.getElementById("brkVal").textContent = state.breakMin + " min";
         queueSave();
+      });
+
+      document.getElementById("snooze").addEventListener("click", async function () {
+        if (!api) return;
+        try {
+          await api.save_config({ breakSnooze: 5 });
+          setStatus("Next break nudge snoozed 5 min", "ok");
+          setTimeout(function () { if (statusEl.textContent.indexOf("snoozed") >= 0) setStatus(""); }, 2500);
+        } catch (err) {
+          setStatus("Couldn\u2019t arm snooze", "error");
+        }
+      });
+
+      document.getElementById("str").addEventListener("click", function () {
+        state.stretchMin = state.stretchMin > 0 ? 0 : 45;
+        render();
+        queueSave();
+      });
+      document.getElementById("strMin").addEventListener("input", function (e) {
+        state.stretchMin = +e.target.value;
+        document.getElementById("strVal").textContent = state.stretchMin + " min";
+        queueSave();
+      });
+
+      document.getElementById("chimes").addEventListener("click", function () {
+        state.chimes = !state.chimes;
+        render();
+        queueSave();
+      });
+
+      ["reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"].forEach(function (k) {
+        document.getElementById(k).addEventListener("click", function () {
+          state[k] = !state[k];
+          render();
+          queueSave();
+        });
       });
 
       document.getElementById("vis").addEventListener("click", async function () {

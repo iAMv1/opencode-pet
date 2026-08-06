@@ -16,7 +16,46 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HTML_TARGETS = ["desktop/app.html", "desktop/control.html"]
+CSS_TARGETS = ["desktop/_ambient.css"]  # + every inline <style> block
 JS_TARGETS = []  # dist/server.js and dist/tui.js removed in v0.6.0 (dead code)
+
+
+def check_css(text, name):
+    """Report unterminated plain rule blocks and orphan declaration text.
+
+    Recovers like a browser (pops the broken block) so each independent
+    bug is reported once instead of cascading.
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    stack = []  # ("plain"|"at", start_line)
+    sel = ""
+    errors = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        i = 0
+        while i < len(line):
+            c = line[i]
+            if c == "{":
+                kind = "at" if sel.strip().startswith("@") else "plain"
+                if stack and stack[-1][0] == "plain" and kind == "plain":
+                    errors.append("%s:%d unterminated rule block" % (name, stack[-1][1]))
+                    stack.pop()
+                stack.append((kind, ln))
+                sel = ""
+            elif c == "}":
+                if not stack:
+                    errors.append("%s:%d stray close" % (name, ln))
+                else:
+                    stack.pop()
+                sel = ""
+            elif c == ";" and not stack:
+                errors.append("%s:%d orphan declaration at top level" % (name, ln))
+                sel = ""
+            elif c not in " \t\r":
+                sel += c
+            i += 1
+    for kind, ln in stack:
+        errors.append("%s:%d unterminated block (%s)" % (name, ln, kind))
+    return errors
 
 
 class _Balancer(html.parser.HTMLParser):
@@ -78,6 +117,24 @@ def main():
             print("   HTML structure errors: %s" % (bal.errors + bal.stack))
         else:
             print("   HTML structure: OK")
+        for i, css in enumerate(re.findall(r"<style>(.*?)</style>", src, re.S)):
+            errs = check_css(css, "%s <style>[%d]" % (rel, i))
+            if errs:
+                failed = True
+                for e in errs:
+                    print("   " + e)
+            else:
+                print("   <style>[%d]: CSS brace balance OK" % i)
+    for rel in CSS_TARGETS:
+        path = os.path.join(ROOT, rel)
+        print("== %s" % rel)
+        errs = check_css(open(path, encoding="utf-8").read(), rel)
+        if errs:
+            failed = True
+            for e in errs:
+                print("   " + e)
+        else:
+            print("   CSS brace balance OK")
     for rel in JS_TARGETS:
         path = os.path.join(ROOT, rel)
         print("== %s" % rel)
