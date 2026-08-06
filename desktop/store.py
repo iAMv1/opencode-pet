@@ -46,6 +46,12 @@ EVOLVE_LEVEL_2 = 5
 EVOLVE_LEVEL_3 = 10
 GOAL_DEFAULT_MIN = 120
 
+def goal_minutes(cfg):
+    try:
+        return max(1, int(cfg.get("goalMin", GOAL_DEFAULT_MIN)))
+    except (TypeError, ValueError):
+        return GOAL_DEFAULT_MIN
+
 # ---------------------------------------------------------------- config
 def load_config():
     default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50,

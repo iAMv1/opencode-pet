@@ -154,7 +154,7 @@ class PetEngine:
 
     def _init_growth(self):
         # daily focus goal (config: goalMin minutes; lastGoalDate = last day met)
-        self.goal_min = max(1, int(self.cfg.get("goalMin", store.GOAL_DEFAULT_MIN)))
+        self.goal_min = store.goal_minutes(self.cfg)
         self._last_goal_date = str(self.cfg.get("lastGoalDate", "") or "")
         # pet growth (XP / level / mood)
         self.xp = int(self.cfg.get("xp", 0))
@@ -378,10 +378,12 @@ class PetEngine:
         goal_secs = self.goal_min * 60
         if goal_secs <= 0 or self._last_goal_date == self._wb_date:
             return
-        total = int(sum(v for v in self._wb.values()
-                        if isinstance(v, (int, float)))) if self._wb else 0
+        total = int(sum(v for k, v in self._wb.items()
+                        if k != "Idle" and isinstance(v, (int, float)))) if self._wb else 0
         if total < goal_secs:
             return
+        now = time.time()
+        self._award_xp(XP_GOAL_BONUS, "goal")
         self._last_goal_date = self._wb_date
         try:
             c = store.load_config()
@@ -389,8 +391,7 @@ class PetEngine:
             store.save_config(c)
         except Exception:
             pass
-        now = time.time()
-        self._award_xp(XP_GOAL_BONUS, "goal")
+        self.mood = "happy"
         self.mood = "happy"
         self.bubble_text = "Daily goal met!"
         self.bubble_until = now + GOAL_BUBBLE_SECS
@@ -1020,7 +1021,7 @@ class PetEngine:
             self.break_min = max(0, int(c["breakMin"]))
             self.cfg["breakMin"] = self.break_min
         if isinstance(c.get("goalMin"), int):
-            self.goal_min = max(1, int(c["goalMin"]))
+            self.goal_min = store.goal_minutes(c)
         if c.get("alwaysOnTop") is not None and bool(c["alwaysOnTop"]) != bool(self.cfg.get("alwaysOnTop", True)):
             self.set_topmost(bool(c["alwaysOnTop"]))
             self.cfg["alwaysOnTop"] = bool(c["alwaysOnTop"])

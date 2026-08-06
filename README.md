@@ -33,6 +33,9 @@ A non-intrusive pet that reacts to real events - no polling loop. It reads OpenC
 - **Transparent window** - zero background, just the pet at 30 FPS
 - **Works with any app** - not just OpenCode
 - **Grows with you** - XP, levels and streaks from focused work
+- **Daily focus goal** - set a daily focus target (config `goalMin`); the pet
+  celebrates with XP + a bubble when you hit it, once per day, and tracks
+  your goal streak
 
 ---
 
@@ -119,7 +122,10 @@ desktop\build.bat    # rebuild the exe
 python tests/run_all.py
 ```
 
-- 187 Python tests · 67 UI checks · 59 backend checks · 21 validation tests
+- 209 Python tests · 67 UI checks · 65 backend checks · 21 validation tests
+- `desktop/` is a package: `main.py` (entry) + `store.py` (config/data),
+  `engine.py` (pet), `win32.py` (window), `api.py` (web bridge), `web.py`,
+  `sprites.py`, `tray.py`
 
 ---
 

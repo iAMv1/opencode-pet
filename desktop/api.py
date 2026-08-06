@@ -285,7 +285,7 @@ class ControlApi:
         live running total (same rule as get_wellbeing_history) and streak is
         consecutive days (ending today or yesterday) that hit goalMin*60.
         """
-        goal_min = max(1, int(store.load_config().get("goalMin", store.GOAL_DEFAULT_MIN)))
+        goal_min = store.goal_minutes(store.load_config())
         d = store.read_wellbeing()
         history = d.get("history") if (d and isinstance(d.get("history"), dict)) else {}
         history = store._fold_today(history, d)
@@ -431,12 +431,6 @@ class ControlApi:
         # render_loop and watcher will exit on their next loop iteration.
         try:
             time.sleep(0.6)
-        except Exception:
-            pass
-        # Final save of wellbeing + focus state so nothing is lost on restart.
-        try:
-            self._save_wellbeing()
-            self._save_focus_state()
         except Exception:
             pass
         sys.exit(0)
