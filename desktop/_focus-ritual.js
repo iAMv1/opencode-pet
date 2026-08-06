@@ -133,7 +133,11 @@
     }
     _raf = requestAnimationFrame(_drive);
   }
-  function _kick() { if (_raf == null) _raf = requestAnimationFrame(_drive); }
+  function _kick() {
+    // reduced-motion: keep the ring poll-driven (900ms), skip the rAF loop
+    if (_raf == null && !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches))
+      _raf = requestAnimationFrame(_drive);
+  }
 
   // keep in sync while the Focus view is visible
   setInterval(function () {
