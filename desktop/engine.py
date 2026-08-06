@@ -282,9 +282,45 @@ class PetEngine:
     def stop_focus(self, completed=False):
         if not self.focus_active and not completed:
             return False
+        was_active = self.focus_active
         self.focus_active = False
+        if was_active:
+            if completed:
+                self._log("focusDone", minutes=self.focus_target_min, tag=self._focus_app)
+                self._pomo_tick()
+            elif self.focus_wilted:
+                self._log("focusWilt", minutes=self.focus_target_min)
+            else:
+                self._log("focusEnd", minutes=self.focus_target_min, completed=False)
         self._save_focus_state()
         return True
+
+    def _pomo_tick(self):
+        """Pomodoro cycle: one completed focus session = one tomato per day.
+        Every 4th session earns a long break; a new day resets the count."""
+        today = time.strftime("%Y-%m-%d")
+        c = store.load_config()
+        count = int(c.get("pomoCount", 0))
+        if c.get("pomoDate") != today:
+            count = 0
+        count += 1
+        long = count % 4 == 0
+        pomo_short = int(c.get("pomoShort", 5) or 5)
+        pomo_long = int(c.get("pomoLong", 15) or 15)
+        self.cfg["pomoCount"] = count
+        self.cfg["pomoDate"] = today
+        self.cfg["pomoShort"] = pomo_short
+        self.cfg["pomoLong"] = pomo_long
+        try:
+            c["pomoCount"] = count
+            c["pomoDate"] = today
+            store.save_config(c)
+        except Exception:
+            pass
+        now = time.time()
+        self.bubble_text = "Pomodoro %d done! Take a %s break" % (
+            count, "long" if long else "short")
+        self.bubble_until = now + FOCUS_BUBBLE_SECS
 
     def _focus_tick(self):
         """Runs at ~2Hz while a session is live: grow, wilt on app-switch or
@@ -295,13 +331,16 @@ class PetEngine:
         if now - self.focus_started >= self.focus_target_min * 60:
             self.focus_active = False
             self.focus_wilted = False
-            self._log("focusDone", minutes=self.focus_target_min)
+            self._log("focusDone", minutes=self.focus_target_min, tag=self._focus_app)
             self._award_xp(XP_FOCUS_BONUS, "focus")
             self.mood = "happy"
             self._save_focus_state()
             # celebration reaction
             self.bubble_text = "Focus complete! +50 XP \u2728"
             self.bubble_until = now + FOCUS_BUBBLE_SECS
+            # pomodoro cycle (bubble wins over the XP line: the count is the
+            # rarer, more actionable celebration)
+            self._pomo_tick()
             self.attention_until = now + FOCUS_ATTENTION_SECS
             self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}  # completion -> cast flash
             return

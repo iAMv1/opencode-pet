@@ -18,7 +18,8 @@ _WEB_METHODS = [
     "get_config", "get_previews", "get_sessions", "get_logs",
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "get_pet_profile",
-    "get_goal_state", "get_weekly_wrapped", "get_week_apps", "get_focus_peaks",
+    "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
+    "get_focus_peaks",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -294,6 +295,21 @@ class ControlApi:
         return {"goalMin": goal_min, "todaySeconds": today_seconds,
                 "met": today_seconds >= goal_min * 60,
                 "streak": store.streak_from_history(history, goal_min * 60)}
+
+    def get_pomo_state(self):
+        """Pomodoro cycle state for the dashboard rail card.
+
+        Returns {count, nextIsLong, pomoMin, pomoShort, pomoLong} — count is
+        today's completed sessions; nextIsLong is whether the break after the
+        NEXT completed pomodoro is a long one (every 4th).
+        """
+        c = store.load_config()
+        count = int(c.get("pomoCount", 0))
+        return {"count": count,
+                "nextIsLong": store.pomo_next_long(count),
+                "pomoMin": int(c.get("pomoMin", 25) or 25),
+                "pomoShort": int(c.get("pomoShort", 5) or 5),
+                "pomoLong": int(c.get("pomoLong", 15) or 15)}
 
     def get_weekly_wrapped(self):
         """'Your Week in Focus' summary: totals, best day, top app, streak,

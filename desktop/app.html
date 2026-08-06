@@ -1669,6 +1669,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
               <div class="sec-label" style="margin:0 0 10px">Today's goal</div>
               <div id="goalCard"></div>
             </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Pomodoro</div>
+              <div id="pomoCard"></div>
+            </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
               <div class="stat think"><b id="stThink">0</b><span>thinking</span></div>
@@ -2991,6 +2995,44 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      /* ---------- pomodoro cycle ---------- */
+      var _pomoSig = "";
+      function renderPomo(p) {
+        var el = document.getElementById("pomoCard");
+        if (!el) return;
+        var sig = JSON.stringify(p || {});
+        if (sig === _pomoSig && el.childElementCount) return;
+        _pomoSig = sig;
+        p = p || {};
+        var n = p.count || 0;
+        var long = !!p.nextIsLong;
+        var inCycle = n % 4;
+        var hint;
+        if (n === 0) {
+          hint = "Every 4th focus session earns a long break";
+        } else if (long) {
+          hint = "Long break after the next one \u2014 " + (p.pomoLong || 15) + " min";
+        } else {
+          hint = inCycle + "/4 \u00b7 " + (p.pomoShort || 5) + " min breaks \u00b7 long at 4";
+        }
+        el.innerHTML =
+          '<div class="goal">' +
+          '<span style="font-size:28px;flex-shrink:0" aria-hidden="true">\ud83c\udf45</span>' +
+          '<div class="goal-info">' +
+          '<div class="goal-title">' + n + ' pomodoro' + (n === 1 ? "" : "s") + ' today</div>' +
+          '<div class="goal-sub' + (long ? " met" : "") + '">Next: ' + (long ? "long break" : "short break") + '</div>' +
+          '<div class="goal-sub">' + hint + '</div>' +
+          '</div>' +
+          '</div>';
+      }
+
+      function refreshPomo() {
+        if (!api) return;
+        api.get_pomo_state().then(function (p) {
+          if (p && typeof p === "object") renderPomo(p);
+        }).catch(function () {});
+      }
+
       /* ---------- 7-day focus history chart ---------- */
       function localDate(d) {
         return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
@@ -3156,6 +3198,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           renderCompanionStats(DEMO_WRAPPED);
           renderCompanionToday(DEMO_WB, DEMO_GOAL);
           renderGoal(DEMO_GOAL);
+          renderPomo({ count: 3, nextIsLong: true, pomoMin: 25, pomoShort: 5, pomoLong: 15 });
           renderHeatmap(DEMO_WB_HISTORY_90);
           renderPeaks(DEMO_PEAKS);
           return;
@@ -3190,6 +3233,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         refreshFocusSession();
         refreshProfile();
         refreshGoal();
+        refreshPomo();
         refreshWrapped();
         refreshSparkline();
         refreshWeekApps();
@@ -3373,6 +3417,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(function () { if (state.view === "focus") refreshFocusSession(); }, 2500);
       setInterval(refreshProfile, 10000);
       setInterval(refreshGoal, 10000);
+      setInterval(refreshPomo, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

@@ -52,10 +52,19 @@ def goal_minutes(cfg):
     except (TypeError, ValueError):
         return GOAL_DEFAULT_MIN
 
+
+def pomo_next_long(count):
+    """True when the break after the NEXT completed pomodoro is long — every
+    4th session earns a long break. Shared by the engine (bubble) and the
+    dashboard (get_pomo_state) so the rule lives in one place."""
+    return (int(count) + 1) % 4 == 0
+
 # ---------------------------------------------------------------- config
 def load_config():
     default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50,
-               "goalMin": GOAL_DEFAULT_MIN, "lastGoalDate": ""}
+               "goalMin": GOAL_DEFAULT_MIN, "lastGoalDate": "",
+               "pomoMin": 25, "pomoShort": 5, "pomoLong": 15,
+               "pomoCount": 0, "pomoDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.

@@ -34,7 +34,7 @@ from desktop.sprites import DEFAULT_MAP, PET_STATES, PETS, pet_states  # noqa: E
 from desktop.store import (  # noqa: E402
     ACTIVE_MS, CONFIG_FILE, FOCUS_FILE, PET_DIR, STALE_MS, WELLBEING_FILE,
     _fold_today, current_app_session, evolution_stage, load_config,
-    read_status, save_config, streak_from_history,
+    pomo_next_long, read_status, save_config, streak_from_history,
 )
 from desktop.tray import create_tray  # noqa: E402
 from desktop.web import run_control, run_web, spawn_control  # noqa: E402
