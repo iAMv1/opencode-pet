@@ -132,9 +132,9 @@ SELFTEST = r"""<script>
     check("wellbeing 4 apps", has("#wellbeing .wb-row") === 4, String(has("#wellbeing .wb-row")));
     check("activity 9 rows", has("#activity .ses") === 9, String(has("#activity .ses")));
 
-    // 5. wrapped page
-    click('.nav-item[data-view="wrapped"]');
-    check("wrapped view visible", !document.getElementById("view-wrapped").hidden);
+    // 5. story page (weekly wrapped + memory)
+    click('.nav-item[data-view="story"]');
+    check("story view visible", !document.getElementById("view-story").hidden);
     check("wrapped card 9h title", text("#wrappedCard .wrap-title").indexOf("9h") === 0,
       text("#wrappedCard .wrap-title"));
     check("wrapped 4 cells", has("#wrappedCard .wrap-cell") === 4, String(has("#wrappedCard .wrap-cell")));
@@ -142,14 +142,28 @@ SELFTEST = r"""<script>
     check("sparkline 30 bars", has("#sparkline .spark i") === 30, String(has("#sparkline .spark i")));
     check("sparkline today highlight", has("#sparkline .spark i.today") === 1);
     check("week apps 3 rows", has("#weekApps .wa-row") === 3, String(has("#weekApps .wa-row")));
+    check("memory lane renders", has("#laneCard .lane-row") >= 1, String(has("#laneCard .lane-row")));
+    check("chronotype card renders", text("#chronoCard").length > 0, text("#chronoCard").slice(0, 60));
     click("#wrappedCard #wrapShare");
     // share uses navigator.clipboard (may reject headless) -> fallback path;
     // what matters is no uncaught exception surfaces in pageErrors
     check("share no uncaught error", pageErrors.length === 0, pageErrors.join(" | "));
 
-    // 6. companion page
-    click('.nav-item[data-view="companion"]');
-    check("companion view visible", !document.getElementById("view-companion").hidden);
+    // 6. rituals page
+    click('.nav-item[data-view="rituals"]');
+    check("rituals view visible", !document.getElementById("view-rituals").hidden);
+    check("rituals card renders", has("#ritualCard .rit") >= 1 || text("#ritualCard").length > 0,
+      text("#ritualCard").slice(0, 60));
+    check("barter card renders", text("#barterCard").length > 0, text("#barterCard").slice(0, 60));
+    check("alerts feed renders", text("#alertsFeed").length > 0, text("#alertsFeed").slice(0, 60));
+
+    // 7. pets & behavior: growth + state machine
+    click('.nav-item[data-view="pets"]');
+    check("pets view visible", !document.getElementById("view-pets").hidden);
+    check("7 pet cards", has(".pet-card") === 7, String(has(".pet-card")));
+    var selected = document.querySelector('.pet-card[aria-checked="true"]');
+    check("pet 2 selected (Charmander)", selected && selected.textContent.indexOf("Charmander") >= 0,
+      selected ? selected.textContent : "");
     check("profile level 7", text("#profileCard .lvl").indexOf("7") >= 0, text("#profileCard .lvl"));
     check("profile mood chip happy", text("#profileCard .mood-chip").indexOf("happy") >= 0,
       text("#profileCard .mood-chip"));
@@ -161,7 +175,27 @@ SELFTEST = r"""<script>
     check("milestones feed renders", has("#milestones .ses") >= 1, String(has("#milestones .ses")));
     check("heatmap 90 cells", has("#heatmap .hm .hm-cell") >= 90 && has("#heatmap .hm .hm-cell") <= 91, "cells=" + has("#heatmap .hm .hm-cell"));
     check("heatmap has colored cells", has("#heatmap .hm .hm-cell.l1") >= 1 || has("#heatmap .hm .hm-cell.l2") >= 1);
-    // 7. focus page best-hours peaks
+    check("state machine legend 9 anims", has("#animLegend .sm-anim") === 9, String(has("#animLegend .sm-anim")));
+    check("mapping editor 9 rows", has("#eventMapRows .sm-select") === 9, String(has("#eventMapRows .sm-select")));
+    check("live status line reads busy", text("#smStatus").indexOf("raw: busy") === 0, text("#smStatus"));
+    check("get_pet_state polled", (window.__calls || []).indexOf("get_pet_state") >= 0,
+      JSON.stringify(window.__calls));
+    check("follow cursor switch on", document.getElementById("followCursor").getAttribute("aria-checked") === "true");
+    check("arrow keys switch on", document.getElementById("arrows").getAttribute("aria-checked") === "true");
+    // change a mapping row -> save_config with eventMap
+    var sel = document.querySelector('#eventMapRows .sm-select[data-state="busy"]');
+    if (sel) {
+      sel.value = "waving";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      setTimeout(function () {
+        check("mapping change saved", (window.__calls || []).indexOf("save_config") >= 0 &&
+          window.__saved && window.__saved.eventMap && window.__saved.eventMap.busy === "waving",
+          JSON.stringify(window.__saved || {}));
+      }, 500);
+    } else {
+      check("mapping row present", false);
+    }
+    // 7b. focus page best-hours peaks
     click('.nav-item[data-view="focus"]');
     check("peaks card renders", has("#peaksCard .pk i") === 24, "bars=" + has("#peaksCard .pk i"));
     check("peaks best line", text("#peaksCard .pk-line").indexOf("focus best") >= 0,
@@ -170,15 +204,8 @@ SELFTEST = r"""<script>
     click('.nav-item[data-view="dash"]');
     check("back on dashboard", !document.getElementById("view-dash").hidden);
 
-    // 7. pets & behavior view
+    // 8. keyboard nav on pet cards (requires pets view active)
     click('.nav-item[data-view="pets"]');
-    check("pets view visible", !document.getElementById("view-pets").hidden);
-    check("7 pet cards", has(".pet-card") === 7, String(has(".pet-card")));
-    var selected = document.querySelector('.pet-card[aria-checked="true"]');
-    check("pet 2 selected (Charmander)", selected && selected.textContent.indexOf("Charmander") >= 0,
-      selected ? selected.textContent : "");
-
-    // 8. keyboard nav on pet cards
     var first = document.querySelector(".pet-card");
     if (first) {
       first.focus();

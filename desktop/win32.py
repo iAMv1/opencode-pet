@@ -30,6 +30,7 @@ WM_LBUTTONUP = 0x0202
 WM_MOVE = 0x0003
 WM_DESTROY = 0x0002
 WM_HOTKEY = 0x0312
+WM_KEYDOWN = 0x0100
 HTCAPTION = 2
 HTCLIENT = 1
 GW_HINSTANCE = -6
@@ -38,6 +39,9 @@ HOTKEY_OPEN_DASH = 2    # Ctrl+Alt+D
 HOTKEY_MOD = 0x0002 | 0x0004  # MOD_CONTROL | MOD_ALT
 HOTKEY_VK_TOGGLE_PET = 0x50   # P
 HOTKEY_VK_OPEN_DASH = 0x44    # D
+VK_LEFT = 0x25
+VK_UP = 0x26
+VK_RIGHT = 0x27
 
 SPI_GETWORKAREA = 0x0030
 
@@ -144,6 +148,8 @@ user32.TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
 user32.DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
 user32.DispatchMessageW.restype = ctypes.c_long
 user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+user32.SetFocus.argtypes = [wintypes.HWND]
+user32.SetFocus.restype = wintypes.HWND
 user32.SetCapture.argtypes = [wintypes.HWND]
 user32.SetCapture.restype = wintypes.HWND
 user32.ReleaseCapture.argtypes = []
@@ -239,6 +245,8 @@ class PetWindow:
             return self._on_mouse_move()
         if msg == WM_LBUTTONUP:
             return self._on_lbutton_up(hwnd)
+        if msg == WM_KEYDOWN:
+            return self._on_key_down(wp)
         if msg == WM_DESTROY:
             user32.PostQuitMessage(0)
             return 0
@@ -268,7 +276,34 @@ class PetWindow:
             # floor on the next tick — this lets the user place the pet
             # anywhere in the window, not just on the bottom axis.
             self.engine.phys["pinned_y"] = True
+            # Grab keyboard focus ONLY when arrows are enabled — stealing
+            # focus from the user's active app on every pet click is hostile
+            # (their typing would be dropped by the pet window).
+            try:
+                if self.engine.cfg.get("arrows", True):
+                    user32.SetFocus(hwnd)
+            except Exception:
+                pass
         user32.SetCapture(hwnd)
+        return 0
+
+    def _on_key_down(self, wp):
+        """Arrow-key control (config 'arrows', default on): VK_LEFT/VK_RIGHT
+        walk the pet, VK_UP jumps. Ignored when arrows is False; every path
+        is guarded so a bad key or engine state never kills the pump."""
+        if not self.engine:
+            return 0
+        try:
+            if not self.engine.cfg.get("arrows", True):
+                return 0
+            if wp == VK_LEFT:
+                self.engine.walk_toward("left")
+            elif wp == VK_RIGHT:
+                self.engine.walk_toward("right")
+            elif wp == VK_UP:
+                self.engine.walk_toward("up")
+        except Exception:
+            pass
         return 0
 
     def _on_mouse_move(self):

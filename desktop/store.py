@@ -21,6 +21,19 @@ PET_DIR = os.path.join(os.path.expanduser("~"), ".opencode", "pet")
 CONFIG_FILE = os.path.join(PET_DIR, "config.json")
 WELLBEING_FILE = os.path.join(PET_DIR, "wellbeing.json")
 FOCUS_FILE = os.path.join(PET_DIR, "focus.json")
+# pet-state.json (engine -> dashboard snapshot) is resolved lazily like
+# TASK_FILE so tests can redirect it by patching PET_DIR alone.
+STATE_FILE = None
+
+
+def state_file_path():
+    """Path of the engine's live-state snapshot — computed at call time so
+    tests can repoint PET_DIR (same rule as activity_log_path)."""
+    return STATE_FILE or os.path.join(PET_DIR, "pet-state.json")
+# tasks.json is resolved lazily (TASK_FILE or PET_DIR/tasks.json) so tests and
+# --web --pet-dir can redirect it by patching PET_DIR alone, like the engine
+# reads the other *_FILE consts at call time.
+TASK_FILE = None
 
 # ---------------------------------------------------------------- time windows
 STALE_MS = 25000            # a status file this old counts as stale
@@ -229,6 +242,26 @@ def goal_minutes(cfg):
         return GOAL_DEFAULT_MIN
 
 
+# ---------------------------------------------------------------- event map
+# Semantic states the config eventMap may re-map to pet animations (the
+# plugin ecosystem writes custom keys; the engine reads only these).
+EVENT_MAP_KEYS = ("idle", "busy", "thinking", "error", "success",
+                  "waiting", "stale", "celebrating", "retry")
+
+
+def sanitize_event_map(m, pet_anims):
+    """Config eventMap -> {semantic state: anim id} validated against the
+    pet's real anims: keys outside EVENT_MAP_KEYS and values the pet has no
+    row for are dropped, so a bad map entry falls back to the default map's
+    anim for that state. Non-dict -> None (no config map at all)."""
+    if not isinstance(m, dict):
+        return None
+    anims = set(pet_anims or [])
+    return {k: v for k, v in m.items()
+            if isinstance(k, str) and k in EVENT_MAP_KEYS
+            and isinstance(v, str) and v in anims}
+
+
 def pomo_next_long(count):
     """True when the break after the NEXT completed pomodoro is long — every
     4th session earns a long break. Shared by the engine (bubble) and the
@@ -310,7 +343,8 @@ def load_config():
                "barterBank": 0, "barterStage": 0, "barterOfferDate": "",
                "alertDate": "",
                "reactTyping": True, "reactCursor": True,
-               "perchChatter": True, "agentMirror": True, "wanderIdle": True}
+               "perchChatter": True, "agentMirror": True, "wanderIdle": True,
+               "followCursor": True, "arrows": True}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -329,9 +363,23 @@ def load_config():
     return default
 
 
-_CONFIG_THREAD_LOCK = threading.Lock()
 _LOCK_TRIES = 50
 _LOCK_WAIT_MS = 20
+_FILE_THREAD_LOCKS = {}       # path -> threading.Lock (per-file serialization)
+_FILE_LOCKS_GUARD = threading.Lock()
+
+
+def _file_thread_lock(path):
+    """One in-process lock per data file: serializes same-process writers
+    while letting DIFFERENT files (config.json vs tasks.json) be locked
+    independently — a config save nested inside a tasks lock must never
+    deadlock on a shared lock object."""
+    with _FILE_LOCKS_GUARD:
+        lock = _FILE_THREAD_LOCKS.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _FILE_THREAD_LOCKS[path] = lock
+        return lock
 
 
 def _lock_with_retry(fd, tries=_LOCK_TRIES, wait_ms=_LOCK_WAIT_MS):
@@ -349,26 +397,27 @@ def _lock_with_retry(fd, tries=_LOCK_TRIES, wait_ms=_LOCK_WAIT_MS):
 
 
 @contextlib.contextmanager
-def _config_lock():
-    """Serialize config.json access across BOTH processes and threads.
+def _config_lock(path=None):
+    """Serialize access to a JSON data file across BOTH processes and threads.
 
-    The pet and control processes both read-modify-write config.json; without
-    a lock an interleaved read/read/write/write silently loses keys (TOCTOU
-    race). The msvcrt byte-range lock serializes across processes on Windows;
-    the module-level threading.Lock serializes within this process, because
-    Windows byte-range locks conflict even between two handles of the same
-    process. If the file lock is unavailable we degrade to the thread lock
-    alone rather than blocking forever.
+    The pet and control processes both read-modify-write config.json (and
+    tasks.json); without a lock an interleaved read/read/write/write silently
+    loses keys (TOCTOU race). The msvcrt byte-range lock serializes across
+    processes on Windows; a per-file threading.Lock serializes within this
+    process, because Windows byte-range locks conflict even between two
+    handles of the same process. If the file lock is unavailable we degrade
+    to the thread lock alone rather than blocking forever.
     """
-    _CONFIG_THREAD_LOCK.acquire()
+    path = path if path is not None else CONFIG_FILE
+    _file_thread_lock(path).acquire()
     fd = None
     yielded = False
     try:
         os.makedirs(PET_DIR, exist_ok=True)
-        fd = os.open(CONFIG_FILE, os.O_RDWR | os.O_CREAT)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT)
         if not _lock_with_retry(fd):
             # lock contended for ~1s — don't write unlocked (interleaved
-            # ftruncate+write would corrupt config); callers treat fd None
+            # ftruncate+write would corrupt the file); callers treat fd None
             # as skip. The thread lock still held, so same-process saves
             # remain serialized.
             os.close(fd)
@@ -388,7 +437,7 @@ def _config_lock():
             except OSError:
                 pass
             os.close(fd)
-        _CONFIG_THREAD_LOCK.release()
+        _file_thread_lock(path).release()
 
 
 def _read_locked_fd(fd):
@@ -1310,3 +1359,178 @@ def barter_next_offer(stage):
     if i >= len(BARTER_OFFERS):
         return None
     return dict(BARTER_OFFERS[i])
+
+
+# ---------------------------------------------------------------- task orchard
+# The task list is a garden the pet lives in. Tasks are trees that grow only
+# during ACTIVE time in a matching soil (pragmatic keyword match on the app
+# name), ripen at invested >= estMin, and are settled by the pet: harvest XP,
+# terroir yields, the gamble wither check, and the weekly prune.
+ORCHARD_SOILS = ("code", "read", "write", "comm", "other")
+ORCHARD_SOIL_RULES = {
+    "code": ["code", "terminal", "python", "opencode", "cursor", "sublime",
+             "vim", "neovim", "jetbrains", "pycharm", "intellij", "powershell",
+             "cmd", "git", "bash", "node", "studio"],
+    "read": ["chrome", "edge", "firefox", "browser", "pdf", "acrobat",
+             "adobe", "kindle", "reader"],
+    "write": ["word", "note", "notepad", "markdown", "typora", "obsidian",
+              "docs", "writer"],
+    "comm": ["discord", "slack", "teams", "zoom", "whatsapp", "telegram",
+             "signal", "outlook", "mail", "wechat", "qq", "chat"],
+}
+ORCHARD_PRUNE_DAYS = 7          # trees older than this are pruned (energy back)
+ORCHARD_GAMBLE_LIMIT = 1.5      # gambled tree harvested past 1.5x estMin withers
+ORCHARD_CACHE_SECS = 10.0       # engine's next-task read cache
+
+
+def _task_file():
+    return TASK_FILE if TASK_FILE else os.path.join(PET_DIR, "tasks.json")
+
+
+def _default_tasks():
+    return {"version": 1, "tasks": [], "terroir": {},
+            "pruneDate": "", "haikuDate": ""}
+
+
+def read_tasks():
+    """Load tasks.json under the cross-process lock with the same retry
+    resilience as read_wellbeing (both processes write it, so reads must lock
+    too). A missing or corrupt file yields the default garden instead of
+    raising — the pet engine reads this on every tick.
+    """
+    for _ in range(CONFIG_READ_RETRIES):
+        try:
+            with _config_lock(_task_file()) as fd:
+                if fd is None:
+                    time.sleep(CONFIG_READ_RETRY_SLEEP)
+                    continue
+                d = _read_locked_fd(fd)
+                if isinstance(d, dict):
+                    out = _default_tasks()
+                    out.update(d)
+                    if not isinstance(out.get("tasks"), list):
+                        out["tasks"] = []
+                    if not isinstance(out.get("terroir"), dict):
+                        out["terroir"] = {}
+                    return out
+        except OSError:
+            time.sleep(CONFIG_READ_RETRY_SLEEP)
+    return _default_tasks()
+
+
+def update_tasks(fn):
+    """Atomically read-merge-write tasks.json under the lock.
+
+    fn(current) returns the new dict, or None to skip the write. The engine
+    (growth/ripe/prune/harvest) and the control api (plant/harvest/delete)
+    both mutate different fields, so every mutation re-bases on the freshest
+    on-disk state instead of a stale read — no lost growth, no clobbered
+    statuses.
+    """
+    try:
+        with _config_lock(_task_file()) as fd:
+            if fd is None:
+                return False
+            current = _read_locked_fd(fd)
+            if not isinstance(current, dict) or not current:
+                # empty/corrupt file: start from the default garden (the lock
+                # may have just O_CREAT'd an empty file)
+                current = _default_tasks()
+            updated = fn(current)
+            if updated is None or not isinstance(updated, dict):
+                return False
+            _write_locked_fd(fd, updated)
+            return True
+    except Exception:
+        return False
+
+
+def write_tasks(d):
+    """Merge `d` into tasks.json under the lock (read-merge-write).
+
+    Task lists merge by id, so a concurrent writer's changes to other trees
+    survive this write.
+    """
+    if not isinstance(d, dict):
+        return False
+
+    def merge(cur):
+        if isinstance(d.get("tasks"), list):
+            by_id = {t.get("id"): t for t in cur.get("tasks") or []
+                     if isinstance(t, dict) and t.get("id")}
+            for t in d["tasks"]:
+                if isinstance(t, dict) and t.get("id"):
+                    by_id[t["id"]] = t
+            cur["tasks"] = list(by_id.values())
+        for k, v in d.items():
+            if k != "tasks":
+                cur[k] = v
+        return cur
+
+    return update_tasks(merge)
+
+
+def soil_for_app(app):
+    """Pragmatic soil match: lowercase substring scan of the foreground app
+    name against each soil's keyword list. "other" when nothing matches —
+    trees in "other" soil grow in any app (they are not picky)."""
+    name = (app or "").lower()
+    if not name:
+        return "other"
+    for soil, kws in ORCHARD_SOIL_RULES.items():
+        for kw in kws:
+            if kw in name:
+                return soil
+    return "other"
+
+
+def orchard_next_task(tasks, app=None):
+    """The next tree the pet tends (waggle): a ripe tree first (oldest ripe
+    wins), else the growing tree closest to ripe, with a bonus when its soil
+    matches the current app. None when the garden has nothing active. Pure —
+    the engine bubble and the dashboard rail card can never disagree."""
+    live = [t for t in tasks if isinstance(t, dict)]
+    ripe = [t for t in live if t.get("status") == "ripe"]
+    if ripe:
+        ripe.sort(key=lambda t: float(t.get("updated") or 0))
+        return dict(ripe[0])
+    growing = [t for t in live if t.get("status") in ("seed", "growing")]
+    if not growing:
+        return None
+    app_soil = soil_for_app(app or "")
+
+    def score(t):
+        est = max(1, float(t.get("estMin") or 0)) * 60
+        p = min(1.0, max(0.0, float(t.get("invested") or 0)) / est)
+        if t.get("soil") == app_soil:
+            p += 0.25
+        return p
+
+    return dict(max(growing, key=score))
+
+
+def _ts_today(ts, today):
+    try:
+        return time.strftime("%Y-%m-%d", time.localtime(float(ts))) == today
+    except (TypeError, ValueError):
+        return False
+
+
+def orchard_haiku(tasks):
+    """3-line day-close haiku (5-7-5 approximation — no strict syllable
+    math) from the REAL garden: the day's first planted tree, its soil, and
+    the harvest count. Empty when the garden was quiet today."""
+    today = time.strftime("%Y-%m-%d")
+    live = [t for t in tasks if isinstance(t, dict)]
+    planted = [t for t in live if _ts_today(t.get("planted"), today)]
+    harvested = [t for t in live if _ts_today(t.get("doneAt"), today)]
+    if not planted and not harvested:
+        return ""
+    t = (planted or harvested)[0]
+    title = str(t.get("title") or "the seed").strip()
+    if len(title) > 16:
+        title = title[:15] + "\u2026"
+    soil = str(t.get("soil") or "other")
+    n = len(harvested)
+    third = "%d harvest%s today" % (n, "s" if n != 1 else "")
+    return "%s,\n%s soil slow,\n%s." % (title, soil, third)

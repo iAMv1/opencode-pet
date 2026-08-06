@@ -165,8 +165,6 @@ SELFTEST_TAIL = r"""<script>
       check("focus view visible", !document.getElementById("view-focus").hidden);
       check("history chart 7 bars", has("#wbHistory .wk-bar") === 7, "n=" + has("#wbHistory .wk-bar"));
       check("today highlighted", has("#wbHistory .wk-day.today") === 1);
-      check("insights best day", text("#wbInsights").indexOf("Best day") >= 0, text("#wbInsights").slice(0, 60));
-      check("insights top app", text("#wbInsights").indexOf("Most time in VS Code") >= 0, text("#wbInsights").slice(0, 60));
       check("compare card", text("#wbCompare").indexOf("This week") >= 0 && text("#wbCompare").indexOf("Last week") >= 0,
         text("#wbCompare").slice(0, 60));
       check("compare first week badge", text("#wbCompare").indexOf("first week") >= 0, text("#wbCompare").slice(0, 60));
@@ -175,19 +173,29 @@ SELFTEST_TAIL = r"""<script>
       check("activity 9 rows", has("#activity .ses") === 9, "n=" + has("#activity .ses"));
       check("focus session control real", has("#focusSession .fsess") === 1);
       check("focus start button real", text("#focusSession #fsStart").indexOf("Start focus") >= 0);
-      click('.nav-item[data-view="wrapped"]');
+      click('.nav-item[data-view="story"]');
+      check("story view visible real", !document.getElementById("view-story").hidden);
       check("wrapped card real", text("#wrappedCard .wrap-title").indexOf("12h") === 0,
         text("#wrappedCard .wrap-title"));
       check("wrapped 4 cells real", has("#wrappedCard .wrap-cell") === 4);
       check("sparkline 30 bars real", has("#sparkline .spark i") === 30, "n=" + has("#sparkline .spark i"));
       check("week apps real rows", has("#weekApps .wa-row") >= 3, "n=" + has("#weekApps .wa-row"));
-      click('.nav-item[data-view="companion"]');
+      check("insights best day real", text("#wbInsights").indexOf("Best day") >= 0, text("#wbInsights").slice(0, 60));
+      check("insights top app real", text("#wbInsights").indexOf("Most time in VS Code") >= 0, text("#wbInsights").slice(0, 60));
+      check("chronotype card real", text("#chronoCard").length > 0, text("#chronoCard").slice(0, 60));
+      click('.nav-item[data-view="rituals"]');
+      check("rituals view visible real", !document.getElementById("view-rituals").hidden);
+      check("barter card real", text("#barterCard").length > 0, text("#barterCard").slice(0, 60));
+      click('.nav-item[data-view="pets"]');
+      check("pets view visible real", !document.getElementById("view-pets").hidden);
       check("profile level 7 real", text("#profileCard .lvl").indexOf("7") >= 0, text("#profileCard .lvl"));
       check("profile mood happy real", text("#profileCard .mood-chip").indexOf("happy") >= 0);
       check("companion stats real", text("#companionStats").indexOf("Streak") >= 0);
       check("milestones real", has("#milestones .ses") >= 1, "n=" + has("#milestones .ses"));
       check("heatmap 90 cells real", has("#heatmap .hm .hm-cell") >= 90 && has("#heatmap .hm .hm-cell") <= 91, "cells=" + has("#heatmap .hm .hm-cell"));
       check("heatmap colored real", has("#heatmap .hm .hm-cell.l1") >= 1 || has("#heatmap .hm .hm-cell.l2") >= 1);
+      check("state machine legend real", has("#animLegend .sm-anim") === 9, "n=" + has("#animLegend .sm-anim"));
+      check("state machine map real", has("#eventMapRows .sm-select") === 9, "n=" + has("#eventMapRows .sm-select"));
       click('.nav-item[data-view="focus"]');
       check("peaks 24 bars real", has("#peaksCard .pk i") === 24, "bars=" + has("#peaksCard .pk i"));
       check("peaks best line real", text("#peaksCard .pk-line").indexOf("focus best") >= 0);

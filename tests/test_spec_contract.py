@@ -24,7 +24,8 @@ ALL_METHODS = {
     "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
     "get_rituals", "get_barter_state", "barter_pay",
     "get_memory_lane", "get_alerts",
-    "next_pet", "prev_pet", "save_config", "hide_pet", "show_pet",
+    "get_orchard_state", "orchard_plant", "orchard_harvest", "orchard_delete",
+    "get_pet_state", "next_pet", "prev_pet", "save_config", "hide_pet", "show_pet",
     "hide_control", "quit",
 }
 
