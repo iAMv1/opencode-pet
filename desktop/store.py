@@ -225,7 +225,9 @@ def load_config():
                "ritualDate": "", "ritualList": [], "ritualDone": [],
                "ritualCloseDate": "",
                "barterBank": 0, "barterStage": 0, "barterOfferDate": "",
-               "alertDate": ""}
+               "alertDate": "",
+               "reactTyping": True, "reactCursor": True,
+               "perchChatter": True, "agentMirror": True, "wanderIdle": True}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.

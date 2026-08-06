@@ -90,6 +90,20 @@ ALERT_IDLE_MIN_SECS = 30 * 60 # ...but only once a real day has accumulated
 ALERT_WEEK_END_WEEKDAY = 6    # week-end review fires on Sunday (0 = Monday)
 ALERT_WEEK_END_HOUR = 20      # ...after 20:00
 
+# ---------------------------------------------------------------- companion presence (P9)
+TYPING_DELTA_MS = 2000        # input this fresh counts as a typing-burst tick
+TYPING_SUSTAIN_SECS = 30      # burst must hold this long before the pet notices
+TYPING_BOUNCE_CHANCE = 0.10   # chance of a bounce cast per tick while bursting
+TYPING_BOUNCE_COOLDOWN = 120  # max one typing bounce per 2 min
+CURSOR_NEAR_PX = 150          # cursor within this of the pet center = "looking"
+CURSOR_DWELL_SECS = 5         # cursor must dwell this long before the pet looks
+CURSOR_LOOK_SECS = 2.5        # how long the thinking-flip lasts
+CURSOR_LOOK_COOLDOWN = 180    # max one cursor look per 3 min
+PERCH_COOLDOWN_SECS = 1800    # max one perch-chatter line per 30 min
+AGENT_ERROR_COOLDOWN_SECS = 900  # max one agent-error concern line per 15 min
+WANDER_IDLE_SIT_SECS = 120    # OS idle this long -> the pet sits (waiting)
+WANDER_SIDE_CHANCE = 0.20     # app change -> chance the pet steps toward it
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -149,6 +163,7 @@ class PetEngine:
         self._init_rituals()
         self._init_barter()
         self._init_alerts()
+        self._init_presence()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -870,6 +885,15 @@ class PetEngine:
         # When nothing is driving the pet (no active session, OS idle), it
         # settles into a calm IDLE rest instead of the restless "waiting" gait —
         # so "screen idle => pet idle", matching how a companion should behave.
+        # P9: a cursor that has dwelled near the pet makes it glance over
+        # (brief thinking-flip); and after a long idle (wanderIdle on) it sits
+        # in the "waiting" pose instead of pacing — an energy save.
+        if getattr(self, "_look_until", 0.0) and time.time() < self._look_until:
+            return "thinking"
+        if not self.os_active and getattr(self, "cfg", {}).get("wanderIdle", True):
+            idle_since = getattr(self, "_idle_since", None)
+            if idle_since and time.time() - idle_since >= WANDER_IDLE_SIT_SECS:
+                return "waiting"
         return self._stale_emotion or ("busy" if self.os_active else "idle")
 
     def _anim_id(self):
@@ -1115,8 +1139,29 @@ class PetEngine:
 
     # personality reactions keyed on state transitions (error -> empathy,
     # completion after work -> cheer). Local only; keeps the pet alive.
-    REACTIONS = {
-        "error": [
+    # P9: agent-mirror copy — the pet comments on the USER's agent work, not
+    # its own. "thinking" bubbles swap in the mirror lines; the error concern
+    # fires at most once per 15 min (cooldown, not spam).
+    AGENT_MIRROR_LINES = [
+        "Your agent is thinking too \u2014 we're both working",
+        "Your agent is mulling it over \u2014 me too",
+        "Both of us on the clock \u2014 thinking things through",
+    ]
+    AGENT_ERROR_LINES = [
+        "A session hit an error \u2014 want to talk about it?",
+        "One of your sessions just errored \u2014 I felt it too",
+        "That session stumbled \u2014 I'm right here",
+    ]
+    # Perch chatter templates (P9): app-aware, light, never shaming.
+    PERCH_LINES = [
+        "Watching you in %s",
+        "In %s \u2014 I'll keep the edge warm",
+        "%s, huh? I'm perched right here",
+        "Your %s game is loud from here",
+        "Nice view of %s from my perch",
+        "Perching above %s \u2014 carry on",
+    ]
+    REACTIONS = {        "error": [
             "Ouch — that one stung. Want me to watch the retry? 👁",
             "Exit %d — rough. I'll stay by your side. 💙",
             "Bounced hard. I'm right here.",
@@ -1199,14 +1244,31 @@ class PetEngine:
         if new_top and new_fresh:
             st = new_top.get("state")
             tool = new_top.get("toolLabel") or ""
+            mirror = self.cfg.get("agentMirror", True)
             if st == "error" and (not prev_top or prev_top.get("state") != "error"):
-                line = random.choice(self.REACTIONS["error"])
-                self.bubble_text = line
-                self.bubble_until = time.time() + 5
+                now = time.time()
+                if mirror and now - self._last_agent_error >= AGENT_ERROR_COOLDOWN_SECS:
+                    # P9: the pet's concerned line — once per 15 min, and the
+                    # error state itself is already mirrored by the status dot.
+                    self._last_agent_error = now
+                    self.bubble_text = random.choice(self.AGENT_ERROR_LINES)
+                    self.bubble_until = now + 5
+                    self.mood = "tired"
+                    self._log("agentError", sessionID=new_top.get("sessionID"))
+                else:
+                    line = random.choice(self.REACTIONS["error"])
+                    self.bubble_text = line
+                    self.bubble_until = time.time() + 5
             elif st == "success" and prev_top and prev_top.get("state") == "busy":
                 self.bubble_text = random.choice(self.REACTIONS["success"])
                 self.bubble_until = time.time() + 4
                 self._award_xp(XP_COMPLETE_BONUS, "complete")
+                if mirror:
+                    # P9: mirror the win — happy mood + a brief cast flash.
+                    self.mood = "happy"
+                    now = time.time()
+                    self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
+                    self._log("agentSuccess", sessionID=new_top.get("sessionID"))
             elif st == "busy" and tool:
                 self._earn_tool_xp(tool)
 
@@ -1240,6 +1302,12 @@ class PetEngine:
         if c.get("chimes") is not None:
             self.chimes_on = bool(c["chimes"])
             self.cfg["chimes"] = self.chimes_on
+        # P9: companion-presence toggles — applied live, like the other
+        # behavior switches (the control window writes them via save_config).
+        for key in ("reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"):
+            if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
+                self.cfg[key] = bool(c[key])
+                changed = True
         if c.get("breakSnooze") is not None:
             # one-shot command: arm the next break nudge to snooze, then delete
             # the key so it can't re-trigger every poll cycle
@@ -1309,8 +1377,11 @@ class PetEngine:
         # the test suite monkeypatches main.last_input_ms/foreground_app, so
         # the lookup must happen here at call time.
         from desktop import main as _app
-        self.os_active = _app.last_input_ms() < store.ACTIVE_MS
+        input_ms = _app.last_input_ms()
+        self._input_ms = input_ms
+        self.os_active = input_ms < store.ACTIVE_MS
         self.os_app = _app.foreground_app()
+        self._cursor = _app.cursor_pos()
         self._update_bubble(now)
         self._break_nudge(now)
         self._stretch_nudge(now)
@@ -1336,6 +1407,90 @@ class PetEngine:
         self._barter_tick(now)
         # P8: lifestyle alerts (churn / idle-fog / Sunday week-end review)
         self._alert_tick(now)
+        # P9: companion presence — typing bursts / cursor dwell are the
+        # cheapest, then perch chatter on app change. Ran after the alert so
+        # the alert's once-a-day line still wins the bubble.
+        self._typing_tick(now)
+        self._cursor_tick(now)
+        self._perch_tick(now)
+
+    def _typing_tick(self, now):
+        """Typing-burst reaction: input staying fresh (< TYPING_DELTA_MS) for
+        over TYPING_SUSTAIN_SECS flips the mood to busy, and occasionally
+        (10%, max 1/2min) fires a tiny bounce cast. Never spammy: one mood
+        flip per burst, one cast per cooldown."""
+        if not self.cfg.get("reactTyping", True):
+            return
+        fresh = self._input_ms < TYPING_DELTA_MS
+        if fresh:
+            if self._typing_since is None:
+                self._typing_since = now
+        else:
+            self._typing_since = None
+            self._typing_burst = False
+            return
+        if now - self._typing_since < TYPING_SUSTAIN_SECS:
+            return
+        if not self._typing_burst:
+            self._typing_burst = True
+            self.mood = "busy"
+        if now - self._last_typing_bounce >= TYPING_BOUNCE_COOLDOWN \
+                and random.random() < TYPING_BOUNCE_CHANCE:
+            self._last_typing_bounce = now
+            self.cast = {"until": now + 0.6, "started": now}
+            self._log("typingBurst", secs=int(now - self._typing_since))
+
+    def _cursor_tick(self, now):
+        """Cursor-dwell reaction: the cursor held within CURSOR_NEAR_PX of the
+        pet for CURSOR_DWELL_SECS makes the pet glance over (brief
+        thinking-flip). Max once per CURSOR_LOOK_COOLDOWN."""
+        if not self.cfg.get("reactCursor", True):
+            return
+        pos = self._cursor
+        if not pos or not self.os_active:
+            self._cursor_near_since = None
+            return
+        cx, cy = pos
+        w = self.pet["frameW"] * self.pet["scale"]
+        h = self.pet["frameH"] * self.pet["scale"]
+        px = self.phys["x"] + w / 2
+        py = self.phys["y"] + h / 2
+        if (cx - px) ** 2 + (cy - py) ** 2 > CURSOR_NEAR_PX ** 2:
+            self._cursor_near_since = None
+            return
+        if self._cursor_near_since is None:
+            self._cursor_near_since = now
+        elif now - self._cursor_near_since >= CURSOR_DWELL_SECS \
+                and now - self._last_cursor_look >= CURSOR_LOOK_COOLDOWN:
+            self._last_cursor_look = now
+            self._look_until = now + CURSOR_LOOK_SECS
+            self._cursor_near_since = None
+            self._log("cursorLook", px=int(px), py=int(py))
+
+    def _perch_tick(self, now):
+        """Workflow perch: when the foreground app changes, the pet
+        occasionally bubbles an app-aware line (max 1/30min) and may step a
+        few paces (x direction flip, 20%) — light company, no shame."""
+        app = self.os_app
+        prev = self._perch_app
+        self._perch_app = app
+        # first observation is the baseline — the pet never chatters at boot
+        if not app or not prev or app == prev or app in ("Explorer", "Program Manager", "Desktop"):
+            return
+        if self.cfg.get("perchChatter", True) \
+                and now - self._last_perch >= PERCH_COOLDOWN_SECS:
+            self._last_perch = now
+            self.bubble_text = random.choice(self.PERCH_LINES) % app
+            self.bubble_until = now + APP_BUBBLE_SECS
+            self._log("perch", app=app)
+        if self.cfg.get("wanderIdle", True) and self.walk_factor > 0 \
+                and random.random() < WANDER_SIDE_CHANCE:
+            vx = self.phys["vx"]
+            direction = -1 if vx > 0 else (1 if vx < 0 else random.choice((-1, 1)))
+            self.phys["vx"] = direction * (WALK_SPEED_MIN + random.random() * WALK_SPEED_RANGE)
+            self.phys["mode"] = "walk"
+            self.phys["walkT"] = 0
+            self._log("wanderSide", app=app)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1385,6 +1540,10 @@ class PetEngine:
         if state_key == last and now - last_at < ttl:
             return None
         lines = self.BUBBLES.get(state_key) or []
+        # P9: agent mirror — "thinking" is the agent's thinking, so its lines
+        # speak about the user's agent when agentMirror is on.
+        if state_key == "thinking" and self.cfg.get("agentMirror", True):
+            lines = self.AGENT_MIRROR_LINES
         if not lines:
             return None
         line = random.choice(lines)
@@ -2015,6 +2174,23 @@ class PetEngine:
         # once a minute off the 2Hz tick path.
         self._alert_date = str(self.cfg.get("alertDate", "") or "")
         self._last_alert_check = 0.0
+
+    def _init_presence(self):
+        # P9: companion presence — the pet reacts to the REAL workflow it
+        # already reads (typing bursts, cursor dwell, foreground-app changes,
+        # agent status files). Every reaction is config-gated; cooldowns keep
+        # it companionable, not needy.
+        self._input_ms = store.ACTIVE_MS * 10
+        self._typing_since = None     # start of the current typing-burst window
+        self._typing_burst = False    # burst registered -> mood flips to busy
+        self._last_typing_bounce = 0.0
+        self._cursor = None           # last polled cursor position (px, py)
+        self._cursor_near_since = None
+        self._last_cursor_look = 0.0
+        self._look_until = 0.0        # brief thinking-flip toward the cursor
+        self._perch_app = ""          # last observed foreground app
+        self._last_perch = 0.0
+        self._last_agent_error = 0.0
 
     def _state_flap_median(self, now=None):
         """Median gap (seconds) between today's state transitions in this

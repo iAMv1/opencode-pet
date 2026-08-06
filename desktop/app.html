@@ -3042,6 +3042,24 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           } else if (e.kind === "petSwitch") {
             text = "swapped pets";
             cls = "busy";
+          } else if (e.kind === "typingBurst") {
+            text = "typing burst \u00b7 " + (e.secs || "?") + "s";
+            cls = "busy";
+          } else if (e.kind === "cursorLook") {
+            text = "looked your way";
+            cls = "thinking";
+          } else if (e.kind === "perch") {
+            text = "perched on " + (e.app || "?");
+            cls = "thinking";
+          } else if (e.kind === "agentError") {
+            text = "agent error \u2014 pet was concerned";
+            cls = "error";
+          } else if (e.kind === "agentSuccess") {
+            text = "agent win \u2014 pet cheered";
+            cls = "success";
+          } else if (e.kind === "wanderSide") {
+            text = "stepped toward " + (e.app || "?");
+            cls = "idle";
           } else {
             text = e.kind;
           }

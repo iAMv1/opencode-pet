@@ -468,6 +468,17 @@ def foreground_app():
         return ""
 
 
+def cursor_pos():
+    """Current cursor position in screen coords, or None when unreadable."""
+    try:
+        pt = POINT()
+        if not user32.GetCursorPos(ctypes.byref(pt)):
+            return None
+        return (pt.x, pt.y)
+    except Exception:
+        return None
+
+
 def read_dir_changes(path):
     handle = kernel32.CreateFileW(
         path, 1, 1 | 2 | 4, None, 3, 0x02000000, None)

@@ -1171,6 +1171,46 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             </div>
             <button class="switch" id="chimes" role="switch" aria-checked="true" aria-label="Chimes"></button>
           </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">React to typing</span>
+              <div class="hint">A little bounce when you type in a burst</div>
+            </div>
+            <button class="switch" id="reactTyping" role="switch" aria-checked="true" aria-label="React to typing"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">React to cursor</span>
+              <div class="hint">The pet looks your way when the cursor lingers near</div>
+            </div>
+            <button class="switch" id="reactCursor" role="switch" aria-checked="true" aria-label="React to the cursor"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Perch chatter</span>
+              <div class="hint">A comment when you switch apps</div>
+            </div>
+            <button class="switch" id="perchChatter" role="switch" aria-checked="true" aria-label="Perch chatter"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Mirror your agent</span>
+              <div class="hint">React to what your AI agent is doing</div>
+            </div>
+            <button class="switch" id="agentMirror" role="switch" aria-checked="true" aria-label="Mirror your agent"></button>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Idle sitting</span>
+              <div class="hint">Sits still after a couple of minutes away</div>
+            </div>
+            <button class="switch" id="wanderIdle" role="switch" aria-checked="true" aria-label="Idle sitting"></button>
+          </div>
         </div>
       </section>
     </main>
@@ -1192,7 +1232,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     (function () {
       "use strict";
       var api = null;
-      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, stretchMin: 45, chimes: true, pets: [], petName: "", stateLabel: "" };
+      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, stretchMin: 45, chimes: true, reactTyping: true, reactCursor: true, perchChatter: true, agentMirror: true, wanderIdle: true, pets: [], petName: "", stateLabel: "" };
       var saveTimer = null;
 
       var statusEl = document.getElementById("status");
@@ -1338,7 +1378,12 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             alwaysOnTop: state.alwaysOnTop,
             breakMin: state.breakMin,
             stretchMin: state.stretchMin,
-            chimes: state.chimes
+            chimes: state.chimes,
+            reactTyping: state.reactTyping,
+            reactCursor: state.reactCursor,
+            perchChatter: state.perchChatter,
+            agentMirror: state.agentMirror,
+            wanderIdle: state.wanderIdle
           });
           setStatus("Saved", "ok");
           setTimeout(function () { if (statusEl.textContent === "Saved") setStatus(""); }, 1800);
@@ -1371,6 +1416,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         sm.style.setProperty("--fill", (sMin - 15) / 105 * 100 + "%");
         document.getElementById("strVal").textContent = sMin + " min";
         document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
+        document.getElementById("reactTyping").setAttribute("aria-checked", String(state.reactTyping));
+        document.getElementById("reactCursor").setAttribute("aria-checked", String(state.reactCursor));
+        document.getElementById("perchChatter").setAttribute("aria-checked", String(state.perchChatter));
+        document.getElementById("agentMirror").setAttribute("aria-checked", String(state.agentMirror));
+        document.getElementById("wanderIdle").setAttribute("aria-checked", String(state.wanderIdle));
       }
 
       function syncPetVisible(vis) {
@@ -1426,6 +1476,12 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             state.chimes = c.chimes;
             document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
           }
+          ["reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"].forEach(function (k) {
+            if (c[k] != null && c[k] !== state[k]) {
+              state[k] = c[k];
+              document.getElementById(k).setAttribute("aria-checked", String(state[k]));
+            }
+          });
           syncPetVisible(c.petVisible !== false);
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
@@ -1452,6 +1508,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           state.breakMin = typeof c.breakMin === "number" ? c.breakMin : 50;
           state.stretchMin = typeof c.stretchMin === "number" ? c.stretchMin : 45;
           state.chimes = c.chimes !== false;
+          state.reactTyping = c.reactTyping !== false;
+          state.reactCursor = c.reactCursor !== false;
+          state.perchChatter = c.perchChatter !== false;
+          state.agentMirror = c.agentMirror !== false;
+          state.wanderIdle = c.wanderIdle !== false;
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
         } catch (e) {}
@@ -1522,6 +1583,14 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         state.chimes = !state.chimes;
         render();
         queueSave();
+      });
+
+      ["reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"].forEach(function (k) {
+        document.getElementById(k).addEventListener("click", function () {
+          state[k] = !state[k];
+          render();
+          queueSave();
+        });
       });
 
       document.getElementById("vis").addEventListener("click", async function () {

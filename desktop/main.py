@@ -39,8 +39,8 @@ from desktop.store import (  # noqa: E402
 from desktop.tray import create_tray  # noqa: E402
 from desktop.web import run_control, run_web, spawn_control  # noqa: E402
 from desktop.win32 import (  # noqa: E402
-    LASTINPUTINFO, PetWindow, foreground_app, kernel32, last_input_ms,
-    read_dir_changes, user32, workarea,
+    LASTINPUTINFO, PetWindow, cursor_pos, foreground_app, kernel32,
+    last_input_ms, read_dir_changes, user32, workarea,
 )
 
 # watcher thread tuning
