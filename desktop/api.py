@@ -19,7 +19,7 @@ _WEB_METHODS = [
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
-    "get_focus_peaks", "get_memory_state",
+    "get_focus_peaks", "get_memory_state", "get_chronotype",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -334,6 +334,27 @@ class ControlApi:
                                  or store.MEMORY_MAX_DEFAULT),
                 "epochFlags": [{"id": eid, "name": name, "desc": desc}
                                for (eid, name, desc) in store.EPOCHS if eid in flags]}
+
+    def get_chronotype(self):
+        """Chronotype (P5): the pet's gene state read from the user's REAL
+        hour fingerprint — the same pure store rules the pet engine uses, so
+        the dashboard card can never disagree with the bubble."""
+        c = store.load_config()
+        chrono_type = str(c.get("chronoType", "larval") or "larval")
+        d = store.read_wellbeing()
+        hour_history = d.get("hourHistory") if (d and isinstance(d.get("hourHistory"), dict)) else {}
+        profile = store.chronotype_profile(hour_history)
+        return {"chronoType": chrono_type,
+                "chronoDate": str(c.get("chronoDate", "") or ""),
+                "genes": store.gene_manifest(chrono_type, profile),
+                "fingerprintHours": [{"hour": h, "seconds": profile["hours"].get(h, 0)}
+                                     for h in range(24)],
+                "activeHours": profile["active_hours"],
+                "peakHour": profile["peakLabel"],
+                "dataDays": profile["days"],
+                "neededDays": store.CHRONO_MIN_DAYS,
+                "nextReview": store.chrono_next_review(c.get("chronoWeekDate")),
+                "readout": store.chrono_readout(chrono_type, profile)}
 
     def get_pomo_state(self):
         """Pomodoro cycle state for the dashboard rail card.

@@ -1697,6 +1697,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
               <div class="sec-label" style="margin:0 0 10px">Memory</div>
               <div id="memoryCard"></div>
             </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Chronotype</div>
+              <div id="chronoCard"></div>
+            </div>
             <div class="rail-stats">
               <div class="stat busy"><b id="stBusy">0</b><span>working</span></div>
               <div class="stat think"><b id="stThink">0</b><span>thinking</span></div>
@@ -3134,6 +3138,57 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      /* ---------- chronotype (P5): gene readout + data progress ---------- */
+      function fmtHour(h) {
+        h = ((Number(h) % 24) + 24) % 24;
+        if (h === 0) return "12 AM";
+        if (h < 12) return h + " AM";
+        if (h === 12) return "12 PM";
+        return (h - 12) + " PM";
+      }
+      var _chronoSig = "";
+      function renderChrono(m) {
+        var el = document.getElementById("chronoCard");
+        if (!el) return;
+        var sig = JSON.stringify(m || {});
+        if (sig === _chronoSig && el.childElementCount) return;
+        _chronoSig = sig;
+        m = m || {};
+        var larval = m.chronoType === "larval";
+        var body;
+        if (larval) {
+          var got = m.dataDays || 0, need = m.neededDays || 3;
+          body = '<div class="mem-dream">' + esc(String(m.readout || "")) + '</div>' +
+            '<div class="goal-sub" style="margin-top:8px">' + got + ' of ' + need +
+            ' days of data \u2014 genes still forming</div>';
+        } else {
+          var act = (m.activeHours || []).slice();
+          var peakLine = "No stable peak yet";
+          if (act.length) {
+            peakLine = "You're sharpest " + fmtHour(act[0]) +
+              (act.length > 1 ? " \u2013 " + fmtHour(act[act.length - 1]) : "");
+          }
+          var chips = ["species", "color", "pattern", "activity"].map(function (k) {
+            var v = String((m.genes || {})[k] || "");
+            return v ? '<span class="epoch-chip" title="' + esc(k + " gene") + '">' +
+              esc(v) + '</span>' : "";
+          }).join("");
+          body = '<div class="mem-dream">' + esc(String(m.readout || "")) + '</div>' +
+            '<div class="goal-sub" style="margin-top:6px">' + esc(peakLine) + '</div>' +
+            (chips ? '<div class="mem-chips">' + chips + '</div>' : "") +
+            '<div class="goal-sub" style="margin-top:8px">reviews weekly \u00b7 next ' +
+            esc(String(m.nextReview || "")) + '</div>';
+        }
+        el.innerHTML = body;
+      }
+
+      function refreshChrono() {
+        if (!api) return;
+        api.get_chronotype().then(function (m) {
+          if (m && typeof m === "object") renderChrono(m);
+        }).catch(function () {});
+      }
+
       /* ---------- 7-day focus history chart ---------- */
       function localDate(d) {
         return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
@@ -3520,6 +3575,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshGoal, 10000);
       setInterval(refreshPomo, 10000);
       setInterval(refreshMemory, 10000);
+      setInterval(refreshChrono, 10000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

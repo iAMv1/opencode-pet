@@ -5,6 +5,7 @@ import X` copies in other modules) so tests can repoint the paths with
 monkeypatch and --web --pet-dir can redirect them at runtime.
 """
 
+import colorsys
 import contextlib
 import datetime
 import json
@@ -45,6 +46,16 @@ TOP_APPS_LIMIT = 8
 EVOLVE_LEVEL_2 = 5
 EVOLVE_LEVEL_3 = 10
 GOAL_DEFAULT_MIN = 120
+
+# ---------------------------------------------------------------- chronotype (P5)
+CHRONO_MIN_DAYS = 3            # hourHistory days needed before metamorphosis
+CHRONO_REVIEW_DAYS = 7         # weekly fingerprint re-review (chronoWeekDate)
+CHRONO_WINDOW_DAYS = 30        # fingerprint analysis window (matches history prune)
+CHRONO_ACTIVE_FLOOR = 600      # avg seconds/hour to count an hour as "active"
+CHRONO_BAND_SHARE = 0.35       # min weighted share of a time band to claim it
+CHRONO_COVERAGE = 20           # hours with data >= this -> all-day, no rhythm
+CHRONO_SPLIT_GAP_H = 6         # far-apart second peak -> hybrid/erratic schedule
+CHRONO_SPLIT_SHARE = 0.25      # that second peak must hold this share of total
 
 # ---------------------------------------------------------------- memory / wake
 MEMORY_MIN_DEFAULT = 60          # minutes of work time between memory bubbles
@@ -91,7 +102,8 @@ def load_config():
                "pomoCount": 0, "pomoDate": "",
                "wakeDate": "", "wakeIdleAt": 0,
                "memoryMin": MEMORY_MIN_DEFAULT, "memoryMax": MEMORY_MAX_DEFAULT,
-               "memoryDate": "", "memoryCount": 0, "epochFlags": []}
+               "memoryDate": "", "memoryCount": 0, "epochFlags": [],
+               "chronoType": "larval", "chronoDate": "", "chronoWeekDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -338,6 +350,147 @@ def hour_label(hour):
     if hour == 12:
         return "12 PM"
     return "%d PM" % (hour - 12)
+
+
+# ---------------------------------------------------------------- chronotype (P5)
+def chronotype_profile(hour_history):
+    """Per-hour average focus over available days + the active-hours list.
+
+    A day counts when it has any hour buckets; averages are over those days
+    only (empty days are skipped, not zero-counted), so one clean day weighs
+    the same as a full one. Returns:
+      hours        : {hour: avg seconds} for hours with any focus
+      active_hours : sorted hours averaging >= CHRONO_ACTIVE_FLOOR
+      peak_hour    : busiest hour (ties -> earliest), -1 when no data
+      peakLabel    : '1 AM'-style label for the peak hour ("" when no data)
+      days         : number of days with data
+    """
+    days = 0
+    totals = [0] * 24
+    for day_map in (hour_history or {}).values():
+        if not isinstance(day_map, dict):
+            continue
+        if not any(isinstance(s, (int, float)) and s > 0 for s in day_map.values()):
+            continue
+        days += 1
+        for h, s in day_map.items():
+            if isinstance(s, (int, float)) and (isinstance(h, int) or str(h).isdigit()):
+                totals[int(h) % 24] += int(s)
+    hours = {}
+    if days:
+        hours = {h: totals[h] // days for h in range(24) if totals[h] > 0}
+    active = [h for h in range(24) if hours.get(h, 0) >= CHRONO_ACTIVE_FLOOR]
+    peak = max(range(24), key=lambda h: (totals[h], -h)) if days else -1
+    return {"hours": hours, "active_hours": active, "peak_hour": peak,
+            "peakLabel": hour_label(peak) if days else "", "days": days}
+
+
+def chronotype_class(profile):
+    """Classify a chronotype profile into one of the chrono ids.
+
+    Order matters: ERRATIC first (all-day uniform coverage, or two real
+    masses of work far apart — neither is a stable rhythm), then the
+    strongest time band — night 0-6, lark 5-12, midday 10-16 — provided it
+    holds at least CHRONO_BAND_SHARE of total seconds; otherwise BALANCED
+    (the default).
+    """
+    hours = profile.get("hours") or {}
+    if not hours:
+        return "balanced"
+    total = sum(hours.values())
+    if total <= 0:
+        return "balanced"
+    # every hour of the day has data -> all-day schedule, no rhythm
+    if len(hours) >= CHRONO_COVERAGE:
+        return "erratic"
+    peak = max(hours, key=lambda h: (hours[h], -h))
+    # a second real mass of work, far from the peak -> split schedule
+    runner = 0
+    for h, s in hours.items():
+        if abs(h - peak) >= CHRONO_SPLIT_GAP_H and s > runner:
+            runner = s
+    if runner >= CHRONO_SPLIT_SHARE * total and runner >= hours[peak] * 0.5:
+        return "erratic"
+    bands = {"night_owl": range(0, 7), "lark": range(5, 13), "midday": range(10, 17)}
+    scores = {cid: sum(hours.get(h, 0) for h in hrs) / total
+              for cid, hrs in bands.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] >= CHRONO_BAND_SHARE else "balanced"
+
+
+# Data-driven gene manifest: each chrono id -> species/color/pattern/activity
+# genes. These are the pet's OWN species names — never existing pet names.
+GENE_MANIFEST = {
+    "larval":    {"species": "larval",     "color": "gray",     "pattern": "undetermined", "activity": "unshaped"},
+    "night_owl": {"species": "nocturnal",  "color": "indigo",   "pattern": "starlight",    "activity": "after-midnight"},
+    "lark":      {"species": "sunrise",    "color": "amber",    "pattern": "dawn",         "activity": "early-morning"},
+    "midday":    {"species": "daylight",   "color": "golden",   "pattern": "sun",          "activity": "midday"},
+    "erratic":   {"species": "hybrid",     "color": "shifting", "pattern": "patchwork",    "activity": "any-hour"},
+    "balanced":  {"species": "steady",     "color": "sage",     "pattern": "rhythm",       "activity": "steady-hours"},
+}
+
+
+def gene_manifest(chronotype, profile=None):
+    """The pet's chrono-gene manifest for a class — deterministic per class.
+    `profile` is kept in the signature so a later data-driven refinement can
+    tune genes from the hour fingerprint (peak, spread) without an API change."""
+    return dict(GENE_MANIFEST.get(chronotype or "larval", GENE_MANIFEST["larval"]))
+
+
+READOUTS = {
+    "night_owl": "Nocturnal genes detected \u2014 I see your %s self.",
+    "lark":      "Sunrise genes \u2014 I rise when you rise (%s).",
+    "midday":    "Daylight genes \u2014 your noon engine peaks at %s.",
+    "erratic":   "Hybrid genes \u2014 your %s self keeps me guessing.",
+    "balanced":  "Steady genes \u2014 a calm rhythm, peaked at %s.",
+    "larval":    "My genes are still forming \u2014 I need more days to read you.",
+}
+
+
+def chrono_readout(chronotype, profile=None):
+    """Gene readout line for a chrono id, filled with the peak-hour label."""
+    line = READOUTS.get(chronotype or "larval", READOUTS["larval"])
+    peak = (profile or {}).get("peakLabel") or "midnight"
+    return line % peak if "%s" in line else line
+
+
+# Aura colour per chrono id: (rgb, alpha) + the hour window the gene is
+# awake in (None = always awake). None colour = hue shifts by day (erratic).
+CHRONO_AURA_SPEC = {
+    "night_owl": ((99, 102, 241, 60), (0, 6)),
+    "lark":      ((255, 178, 90, 60), (5, 12)),
+    "midday":    ((255, 205, 92, 60), (10, 16)),
+    "erratic":   (None, None),
+    "balanced":  ((141, 196, 157, 30), None),
+}
+
+
+def chrono_aura(chronotype, hour=None, day_of_year=None):
+    """Aura colour for a chrono gene at a given hour, or None when the gene
+    is dormant (outside its active window / still larval). Pure — the engine
+    only draws what this returns."""
+    spec = CHRONO_AURA_SPEC.get(chronotype)
+    if not spec:
+        return None
+    color, window = spec
+    hour = int(hour or 0) % 24
+    if window and not (window[0] <= hour <= window[1]):
+        return None
+    if color is None:  # erratic: shifting hue by day-of-year
+        hue = (((day_of_year or 1) * 137.5) % 360) / 360.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.65, 1.0)
+        return (int(r * 255), int(g * 255), int(b * 255), 55)
+    return color
+
+
+def chrono_next_review(week_date, today=None):
+    """ISO date of the next weekly fingerprint review after a review date."""
+    today = today or datetime.date.today()
+    try:
+        last = datetime.date.fromisoformat(str(week_date or ""))
+    except (TypeError, ValueError):
+        return today.isoformat()
+    return (last + datetime.timedelta(days=CHRONO_REVIEW_DAYS)).isoformat()
 
 
 # ---------------------------------------------------------------- shared rules

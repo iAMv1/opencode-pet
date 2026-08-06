@@ -21,7 +21,7 @@ ALL_METHODS = {
     "get_wellbeing_history", "get_wellbeing_insights",
     "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
-    "get_focus_peaks", "get_memory_state",
+    "get_focus_peaks", "get_memory_state", "get_chronotype",
     "next_pet", "prev_pet", "save_config", "hide_pet", "show_pet",
     "hide_control", "quit",
 }

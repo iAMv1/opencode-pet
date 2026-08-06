@@ -62,6 +62,10 @@ MEMORY_SHIMMER_SECS = 4.0   # brief happy shimmer after a recall (no XP)
 XP_EPOCH = 25               # epoch crossings ARE earned milestones
 EPOCH_BUBBLE_SECS = 5.0     # epoch celebration bubble lifetime
 
+# ---------------------------------------------------------------- chronotype (P5)
+XP_METAMORPH = 50           # metamorphosis into a chrono gene — a real milestone
+CHRONO_BUBBLE_SECS = 5.0    # metamorph / drift bubble lifetime
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -116,6 +120,7 @@ class PetEngine:
         self._init_focus()
         self._init_growth()
         self._init_memory()
+        self._init_chrono()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -206,6 +211,17 @@ class PetEngine:
         # epoch crossings: one celebration per marker, ever
         self._last_fc_read = 0.0
         self._focus_count_cache = 0
+
+    def _init_chrono(self):
+        # P5: the pet's chrono-genes come from the user's REAL hour
+        # fingerprint. larval until enough days of hourHistory exist; then
+        # chronoDate/chronoWeekDate in config guard the one-time metamorph
+        # and the weekly drift re-review (both survive restarts).
+        self.chrono_type = str(self.cfg.get("chronoType", "larval") or "larval")
+        self.chrono_date = str(self.cfg.get("chronoDate", "") or "")
+        self.chrono_week_date = str(self.cfg.get("chronoWeekDate", "") or "")
+        self._chrono_checked = ""      # date of the last fingerprint evaluation
+        self._chrono_glow_cache = {}   # gene aura -> prerendered glow
 
     def _log(self, kind, **data):
         """Append one JSON line to THIS pet's activity log — one pet, one memory."""
@@ -882,6 +898,10 @@ class PetEngine:
         saura = self._state_aura()
         if saura:
             canvas.alpha_composite(saura, (w - saura.width, 0))
+        # P5: chrono-gene aura behind the pet (visual overlay, no new art)
+        cglow = self._chrono_glow()
+        if cglow:
+            canvas.alpha_composite(cglow)
         if self.sheet:
             st = sprites.pet_states(self.pet)
             anim = next((a for a in st if a["id"] == self._anim_id()), st[0])
@@ -1224,6 +1244,8 @@ class PetEngine:
         self._wake_tick(now)
         self._memory_tick(now)
         self._epoch_tick(now)
+        # P5: chronotype metamorphosis + weekly drift (once per day; cheap)
+        self._chrono_tick(now)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1547,3 +1569,109 @@ class PetEngine:
         self.bubble_until = now + EPOCH_BUBBLE_SECS
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self._log("epoch", id=eid, name=name)
+
+    # ------------------------------------------------------- chronotype (P5)
+    def _save_chrono(self):
+        try:
+            c = store.load_config()
+            c["chronoType"] = self.chrono_type
+            c["chronoDate"] = self.chrono_date
+            c["chronoWeekDate"] = self.chrono_week_date
+            store.save_config(c)
+        except Exception:
+            pass
+
+    def _chrono_review_due(self, today):
+        if not self.chrono_week_date:
+            return True
+        try:
+            last = datetime.date.fromisoformat(self.chrono_week_date)
+        except ValueError:
+            return True
+        return (datetime.date.today() - last).days >= store.CHRONO_REVIEW_DAYS
+
+    def _chrono_tick(self, now):
+        """P5 metamorphosis + weekly drift. Evaluates the hour fingerprint
+        once per day; the chronoDate/chronoWeekDate config guards make the
+        metamorph (one-time) and the drift (max one per week) both idempotent.
+        The scan is cheap (<=30 days x 24 hours) but the once-per-day gate
+        keeps it off the 2Hz tick path anyway."""
+        today = time.strftime("%Y-%m-%d")
+        if getattr(self, "_chrono_checked", "") == today:
+            return
+        self._chrono_checked = today
+        profile = store.chronotype_profile(self._hour_history)
+        if self.chrono_type == "larval":
+            if profile["days"] < store.CHRONO_MIN_DAYS:
+                return
+            self._metamorph(store.chronotype_class(profile), profile, now)
+            return
+        if self._chrono_review_due(today):
+            self._chrono_review(profile, now)
+
+    def _metamorph(self, cls, profile, now):
+        """Larva -> chrono gene: the pet's species becomes the user's REAL
+        schedule. One-time (chronoDate guard), 50 XP, cast flash, log."""
+        self.chrono_type = cls
+        self.chrono_date = time.strftime("%Y-%m-%d")
+        self.chrono_week_date = time.strftime("%Y-%m-%d")  # first review in 7 days
+        self._save_chrono()
+        genes = store.gene_manifest(cls, profile)
+        self._award_xp(XP_METAMORPH, "metamorph")
+        self.mood = "happy"
+        self.bubble_text = store.chrono_readout(cls, profile)
+        self.bubble_until = now + CHRONO_BUBBLE_SECS
+        self.attention_until = now + FOCUS_ATTENTION_SECS
+        self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
+        self._log("metamorph", to=cls, species=genes["species"], genes=genes)
+        self._chime("complete")
+
+    def _chrono_review(self, profile, now):
+        """Weekly fingerprint re-read. chronoWeekDate advances every review;
+        a class change fires a drift event (bubble + log + new aura) — at
+        most one per week because the next review is a week away."""
+        cls = store.chronotype_class(profile)
+        prev = self.chrono_type
+        self.chrono_week_date = time.strftime("%Y-%m-%d")
+        if cls != prev and cls != "larval":
+            self.chrono_type = cls
+            self._save_chrono()
+            self.bubble_text = "My genes are drifting\u2026"
+            self.bubble_until = now + CHRONO_BUBBLE_SECS
+            self.attention_until = now + FOCUS_ATTENTION_SECS
+            self._log("drift", to=cls, fromType=prev)
+        else:
+            self._save_chrono()  # review happened, nothing drifted
+
+    def _chrono_glow(self):
+        """Radial aura behind the pet for the active chrono gene — visual
+        overlay only, the sprite sheet never changes. Dormant outside the
+        gene's hour window (night owl glows 0-6h, lark at dawn, ...)."""
+        try:
+            col = store.chrono_aura(self.chrono_type,
+                                    hour=time.localtime().tm_hour,
+                                    day_of_year=datetime.date.today().timetuple().tm_yday)
+            if not col:
+                return None
+            cache = getattr(self, "_chrono_glow_cache", None)
+            if cache is None:
+                self._chrono_glow_cache = cache = {}
+            key = col
+            glow = cache.get(key)
+            if glow is None:
+                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
+                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
+                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+                dr = ImageDraw.Draw(glow)
+                cx, cy = w // 2, int(h * 0.52)
+                r = max(6, int(min(w, h) * 0.42))
+                for rr in range(r, 0, -2):
+                    a = int(col[3] * (1 - rr / r) ** 2)
+                    if a <= 0:
+                        continue
+                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                               fill=(col[0], col[1], col[2], a))
+                self._chrono_glow_cache[key] = glow
+            return glow
+        except Exception:
+            return None
