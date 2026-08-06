@@ -1140,6 +1140,36 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
               <input type="range" id="brkMin" min="20" max="120" step="5" value="50" aria-label="Break reminder minutes">
               <div class="range-ends" aria-hidden="true"><span>20 min</span><span>2 hours</span></div>
             </div>
+            <div class="row" style="margin-top:10px">
+              <span class="lab">When break time hits</span>
+              <button class="btn" id="snooze" type="button">Snooze 5 min</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Stretch reminder</span>
+              <div class="hint">A stretch nudge after continuous work</div>
+            </div>
+            <button class="switch" id="str" role="switch" aria-checked="false" aria-label="Stretch reminder"></button>
+          </div>
+          <div id="strRow" hidden>
+            <div class="row">
+              <span class="lab">Every</span>
+              <span class="val" id="strVal">45 min</span>
+            </div>
+            <div class="slider-wrap">
+              <input type="range" id="strMin" min="15" max="120" step="5" value="45" aria-label="Stretch reminder minutes">
+              <div class="range-ends" aria-hidden="true"><span>15 min</span><span>2 hours</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <span class="lab">Chimes</span>
+              <div class="hint">Soft sounds for focus, breaks, and stretches</div>
+            </div>
+            <button class="switch" id="chimes" role="switch" aria-checked="true" aria-label="Chimes"></button>
           </div>
         </div>
       </section>
@@ -1162,7 +1192,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     (function () {
       "use strict";
       var api = null;
-      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, pets: [], petName: "", stateLabel: "" };
+      var state = { petIdx: 0, walk: 100, alwaysOnTop: true, petVisible: true, breakMin: 50, stretchMin: 45, chimes: true, pets: [], petName: "", stateLabel: "" };
       var saveTimer = null;
 
       var statusEl = document.getElementById("status");
@@ -1306,7 +1336,9 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             petIdx: state.petIdx,
             walk: state.walk,
             alwaysOnTop: state.alwaysOnTop,
-            breakMin: state.breakMin
+            breakMin: state.breakMin,
+            stretchMin: state.stretchMin,
+            chimes: state.chimes
           });
           setStatus("Saved", "ok");
           setTimeout(function () { if (statusEl.textContent === "Saved") setStatus(""); }, 1800);
@@ -1330,6 +1362,15 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         bm.value = mins;
         bm.style.setProperty("--fill", (mins - 20) / 100 * 100 + "%");
         document.getElementById("brkVal").textContent = mins + " min";
+        var onStr = state.stretchMin > 0;
+        document.getElementById("str").setAttribute("aria-checked", String(onStr));
+        document.getElementById("strRow").hidden = !onStr;
+        var sMin = state.stretchMin > 0 ? state.stretchMin : 45;
+        var sm = document.getElementById("strMin");
+        sm.value = sMin;
+        sm.style.setProperty("--fill", (sMin - 15) / 105 * 100 + "%");
+        document.getElementById("strVal").textContent = sMin + " min";
+        document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
       }
 
       function syncPetVisible(vis) {
@@ -1370,6 +1411,21 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             bm.style.setProperty("--fill", (mins - 20) / 100 * 100 + "%");
             document.getElementById("brkVal").textContent = mins + " min";
           }
+          if (typeof c.stretchMin === "number" && document.activeElement !== document.getElementById("strMin")) {
+            state.stretchMin = c.stretchMin;
+            var onStr = state.stretchMin > 0;
+            document.getElementById("str").setAttribute("aria-checked", String(onStr));
+            document.getElementById("strRow").hidden = !onStr;
+            var sMin = state.stretchMin > 0 ? state.stretchMin : 45;
+            var sm = document.getElementById("strMin");
+            sm.value = sMin;
+            sm.style.setProperty("--fill", (sMin - 15) / 105 * 100 + "%");
+            document.getElementById("strVal").textContent = sMin + " min";
+          }
+          if (c.chimes != null && c.chimes !== state.chimes) {
+            state.chimes = c.chimes;
+            document.getElementById("chimes").setAttribute("aria-checked", String(state.chimes));
+          }
           syncPetVisible(c.petVisible !== false);
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
@@ -1394,6 +1450,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           state.alwaysOnTop = c.alwaysOnTop !== false;
           state.petVisible = c.petVisible !== false;
           state.breakMin = typeof c.breakMin === "number" ? c.breakMin : 50;
+          state.stretchMin = typeof c.stretchMin === "number" ? c.stretchMin : 45;
+          state.chimes = c.chimes !== false;
           if (c.petName) state.petName = c.petName;
           if (c.state) state.stateLabel = c.state;
         } catch (e) {}
@@ -1435,6 +1493,34 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       document.getElementById("brkMin").addEventListener("input", function (e) {
         state.breakMin = +e.target.value;
         document.getElementById("brkVal").textContent = state.breakMin + " min";
+        queueSave();
+      });
+
+      document.getElementById("snooze").addEventListener("click", async function () {
+        if (!api) return;
+        try {
+          await api.save_config({ breakSnooze: 5 });
+          setStatus("Next break nudge snoozed 5 min", "ok");
+          setTimeout(function () { if (statusEl.textContent.indexOf("snoozed") >= 0) setStatus(""); }, 2500);
+        } catch (err) {
+          setStatus("Couldn\u2019t arm snooze", "error");
+        }
+      });
+
+      document.getElementById("str").addEventListener("click", function () {
+        state.stretchMin = state.stretchMin > 0 ? 0 : 45;
+        render();
+        queueSave();
+      });
+      document.getElementById("strMin").addEventListener("input", function (e) {
+        state.stretchMin = +e.target.value;
+        document.getElementById("strVal").textContent = state.stretchMin + " min";
+        queueSave();
+      });
+
+      document.getElementById("chimes").addEventListener("click", function () {
+        state.chimes = !state.chimes;
+        render();
         queueSave();
       });
 

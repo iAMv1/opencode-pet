@@ -1080,6 +1080,15 @@ body {
   border-color: transparent; box-shadow: var(--accent-glow);
 }
 
+.fsess-tags { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.fsess-tags-lab { font-size: 10.5px; font-weight: 640; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); }
+.fsess-tags input {
+  width: 96px; padding: 4px 9px; border-radius: 999px; font-size: 11px;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+}
+.fsess-tags input:focus { border-color: var(--accent); outline: none; }
+.fsess-tags .btn.tagset { padding: 4px 10px; font-size: 11px; border-radius: 999px; }
+
 /* ---------- heatmap ---------- */
 .hm-cell { border-radius: 4px; }
 .hm-cell.l1 { background: rgba(127, 200, 232, 0.30); }
@@ -2350,6 +2359,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       /* ---------- live focus session ---------- */
       var _fsSig = "";
       var _fsTarget = 25;
+      var FS_TAGS = ["Work", "Study", "Write"];
       var RING_R = 33.5, RING_C = 2 * Math.PI * RING_R;
       function focusMoveFor(n) {
         var s = String(n == null ? "" : n).toLowerCase();
@@ -2380,7 +2390,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         // Structural identity ONLY — live progress is driven by a rAF updater,
         // so polls never rebuild the whole card (fixes the sluggish stepped ring).
         var sig = JSON.stringify([
-          active, wilted, fs.app || "", fs.targetMin || 0, fs.startedAt || 0
+          active, wilted, fs.app || "", fs.targetMin || 0, fs.startedAt || 0, fs.tag || ""
         ]);
         if (sig === _fsSig && el.childElementCount) return;
         _fsSig = sig;
@@ -2421,6 +2431,16 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         var chips = [15, 25, 45, 60, 90].map(function (m) {
           return '<button class="min-chip" data-min="' + m + '" aria-pressed="' + (m === _fsTarget) + '">' + m + "m</button>";
         }).join("");
+        var curTag = fs.tag || "";
+        var tagChips = FS_TAGS.map(function (t) {
+          return '<button class="min-chip" data-tag="' + t + '" aria-pressed="' + (t === curTag) + '">' + t + "</button>";
+        }).join("");
+        var tagsRow = active
+          ? '<div class="fsess-tags" role="group" aria-label="Session tag">' +
+            '<span class="fsess-tags-lab">Tag:</span>' + tagChips +
+            '<input id="fsTagIn" maxlength="40" placeholder="custom\u2026" aria-label="Custom session tag" value="' + esc(curTag) + '">' +
+            '<button class="btn fsess-btn tagset" id="fsTagSet" type="button">Set</button></div>'
+          : "";
         var offset = active ? RING_C * (1 - prog) : RING_C;
         el.innerHTML =
           '<div class="fsess" data-active="' + (active ? "1" : "0") + '" data-started="' + startedMs + '" data-target="' + targetSec + '">' +
@@ -2436,6 +2456,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           '<div class="fsess-title">' + title + '</div>' +
           '<div class="fsess-sub' + statusCls + '">' + status + '</div>' +
           '<div class="mins" role="group" aria-label="Focus length">' + chips + '</div>' +
+          tagsRow +
           '</div>' +
           '<div class="fsess-actions">' + btn + '</div>' +
           '</div>';
@@ -2454,6 +2475,23 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             el.querySelectorAll(".min-chip").forEach(function (x) { x.setAttribute("aria-pressed", String(+x.dataset.min === _fsTarget)); });
           });
         });
+        function applyTag(t) {
+          if (!api) return;
+          api.set_focus_tag(t).then(function () { _fsSig = ""; refreshFocusSession(); }).catch(function () {});
+        }
+        el.querySelectorAll(".fsess-tags .min-chip").forEach(function (b) {
+          b.addEventListener("click", function () {
+            applyTag(b.dataset.tag);
+            el.querySelectorAll(".fsess-tags .min-chip").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.tag === b.dataset.tag)); });
+          });
+        });
+        var tagIn = el.querySelector("#fsTagIn");
+        var tagSet = el.querySelector("#fsTagSet");
+        if (tagIn && tagSet) {
+          function submitTag() { var v = tagIn.value.trim(); if (v) applyTag(v); }
+          tagSet.addEventListener("click", submitTag);
+          tagIn.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submitTag(); } });
+        }
       }
 
       function refreshFocusSession() {
@@ -2891,6 +2929,12 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           } else if (e.kind === "break") {
             text = "break nudge \u00b7 " + (e.mins || "?") + " min streak";
             cls = "thinking";
+          } else if (e.kind === "breakSnooze") {
+            text = "break snoozed \u00b7 see you in " + (e.mins || "?") + " min";
+            cls = "thinking";
+          } else if (e.kind === "stretch") {
+            text = "stretch break \u00b7 " + (e.mins || "?") + " min streak";
+            cls = "success";
           } else {
             text = e.kind;
           }

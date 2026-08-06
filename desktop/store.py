@@ -63,6 +63,7 @@ def pomo_next_long(count):
 def load_config():
     default = {"petIdx": 0, "alwaysOnTop": True, "walk": 100, "breakMin": 50,
                "goalMin": GOAL_DEFAULT_MIN, "lastGoalDate": "",
+               "stretchMin": 45, "chimes": True,
                "pomoMin": 25, "pomoShort": 5, "pomoLong": 15,
                "pomoCount": 0, "pomoDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of

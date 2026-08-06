@@ -17,7 +17,7 @@ from . import engine, sprites, store
 _WEB_METHODS = [
     "get_config", "get_previews", "get_sessions", "get_logs",
     "get_wellbeing", "get_wellbeing_history", "get_wellbeing_insights",
-    "get_focus_state", "start_focus", "stop_focus", "get_pet_profile",
+    "get_focus_state", "start_focus", "stop_focus", "set_focus_tag", "get_pet_profile",
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
     "get_focus_peaks",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
@@ -45,6 +45,7 @@ class ControlApi:
 
     def __init__(self):
         self._control = None
+        self.tag = ""
 
     def bind_window(self, win):
         self._control = win
@@ -242,13 +243,31 @@ class ControlApi:
             if isinstance(d, dict) and d.get("active"):
                 d["progress"] = store.focus_progress(
                     d.get("active"), d.get("startedAt", 0), d.get("targetMin", engine.FOCUS_DEFAULT_MIN))
+                d["tag"] = d.get("tag") or self.tag or ""
             else:
                 d = {"active": False, "startedAt": 0, "targetMin": engine.FOCUS_DEFAULT_MIN,
-                     "wilted": False, "app": "", "progress": 0.0}
+                     "wilted": False, "app": "", "progress": 0.0, "tag": ""}
             return d
         except Exception:
             return {"active": False, "startedAt": 0, "targetMin": engine.FOCUS_DEFAULT_MIN,
-                    "wilted": False, "app": "", "progress": 0.0}
+                    "wilted": False, "app": "", "progress": 0.0, "tag": ""}
+
+    def set_focus_tag(self, tag=""):
+        """Tag the CURRENT focus session (Work/Study/Write/...). Applies until
+        the session ends; a new session starts untagged."""
+        tag = (tag or "").strip()[:40]
+        self.tag = tag
+        try:
+            with open(store.FOCUS_FILE, encoding="utf-8") as fh:
+                d = json.load(fh)
+            if not (isinstance(d, dict) and d.get("active")):
+                return False
+            d["tag"] = tag
+            with open(store.FOCUS_FILE, "w", encoding="utf-8") as fh:
+                json.dump(d, fh)
+            return True
+        except Exception:
+            return False
 
     def start_focus(self, minutes=None):
         """Write the one-shot command; the pet process owns the session."""

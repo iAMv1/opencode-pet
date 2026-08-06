@@ -14,7 +14,7 @@ import time
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import sprites, store, win32
+from . import sounds, sprites, store, win32
 
 # ---------------------------------------------------------------- focus sessions
 FOCUS_DEFAULT_MIN = 25
@@ -42,6 +42,12 @@ GOAL_CAST_SECS = 1.0
 BREAK_COOLDOWN_SECS = 300   # min time between break nudges
 BREAK_NUDGE_SECS = 5        # nudge bubble lifetime
 BREAK_TIRED_MULTIPLE = 2    # working 2x breakMin => tired mood
+SNOOZE_DEFAULT_MIN = 5      # break snooze length when the command lacks a value
+
+# ---------------------------------------------------------------- stretch nudge
+STRETCH_DEFAULT_MIN = 45    # continuous-work threshold (0 = off)
+STRETCH_COOLDOWN_SECS = 1800  # max 1 stretch nudge per 30 min
+XP_STRETCH = 2
 
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
@@ -132,6 +138,11 @@ class PetEngine:
         self.break_track_start = None
         self._break_shown = False
         self._last_break = 0.0
+        self._snooze_min = 0          # pending one-shot break snooze (minutes)
+        self.stretch_min = int(self.cfg.get("stretchMin", STRETCH_DEFAULT_MIN))
+        self._stretch_start = None    # continuous-work marker (None = not working)
+        self._last_stretch = 0.0
+        self.chimes_on = bool(self.cfg.get("chimes", True))
         self.attention_until = 0.0
         self.cast = None  # focus-completion cast flash (small independent event)
         self._wb = {}
@@ -151,6 +162,7 @@ class PetEngine:
         self.focus_target_min = int(self.cfg.get("focusMin", FOCUS_DEFAULT_MIN))
         self.focus_wilted = False
         self._focus_app = ""
+        self._focus_tag = ""
 
     def _init_growth(self):
         # daily focus goal (config: goalMin minutes; lastGoalDate = last day met)
@@ -168,6 +180,15 @@ class PetEngine:
             log_path = os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"])
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
+        except Exception:
+            pass
+
+    def _chime(self, kind):
+        """Sound a native chime for an engine event (config-gated, always safe)."""
+        if not getattr(self, "chimes_on", True):
+            return
+        try:
+            sounds.play(kind)
         except Exception:
             pass
 
@@ -250,15 +271,26 @@ class PetEngine:
             self.focus_target_min = int(d.get("targetMin", self.focus_target_min))
             self.focus_wilted = bool(d.get("wilted"))
             self._focus_app = d.get("app", "")
+            self._focus_tag = d.get("tag", "") or ""
         except Exception:
             pass
+
+    def _focus_tag_now(self):
+        """Authoritative session tag from focus.json (the dashboard writes it
+        directly via set_focus_tag), falling back to "" when unreadable."""
+        try:
+            with open(store.FOCUS_FILE, encoding="utf-8") as fh:
+                return (json.load(fh).get("tag") or "").strip()
+        except Exception:
+            return ""
 
     def _save_focus_state(self):
         try:
             os.makedirs(store.PET_DIR, exist_ok=True)
             json.dump({"active": self.focus_active, "startedAt": self.focus_started,
                        "targetMin": self.focus_target_min, "wilted": self.focus_wilted,
-                       "app": self._focus_app, "progress": self._focus_progress()},
+                       "app": self._focus_app, "progress": self._focus_progress(),
+                       "tag": self._focus_tag},
                       open(store.FOCUS_FILE, "w", encoding="utf-8"))
         except Exception:
             pass
@@ -275,8 +307,10 @@ class PetEngine:
         self.focus_started = time.time()
         self.focus_wilted = False
         self._focus_app = self.os_app or "Desktop"
+        self._focus_tag = ""  # a new session starts untagged
         self._log("focusStart", targetMin=self.focus_target_min, app=self._focus_app)
         self._save_focus_state()
+        self._chime("start")
         return True
 
     def stop_focus(self, completed=False):
@@ -286,8 +320,10 @@ class PetEngine:
         self.focus_active = False
         if was_active:
             if completed:
-                self._log("focusDone", minutes=self.focus_target_min, tag=self._focus_app)
+                self._log("focusDone", minutes=self.focus_target_min,
+                          tag=self._focus_tag_now() or self._focus_app)
                 self._pomo_tick()
+                self._chime("complete")
             elif self.focus_wilted:
                 self._log("focusWilt", minutes=self.focus_target_min)
             else:
@@ -331,10 +367,12 @@ class PetEngine:
         if now - self.focus_started >= self.focus_target_min * 60:
             self.focus_active = False
             self.focus_wilted = False
-            self._log("focusDone", minutes=self.focus_target_min, tag=self._focus_app)
+            self._log("focusDone", minutes=self.focus_target_min,
+                      tag=self._focus_tag_now() or self._focus_app)
             self._award_xp(XP_FOCUS_BONUS, "focus")
             self.mood = "happy"
             self._save_focus_state()
+            self._chime("complete")
             # celebration reaction
             self.bubble_text = "Focus complete! +50 XP \u2728"
             self.bubble_until = now + FOCUS_BUBBLE_SECS
@@ -1059,6 +1097,23 @@ class PetEngine:
         if isinstance(c.get("breakMin"), int):
             self.break_min = max(0, int(c["breakMin"]))
             self.cfg["breakMin"] = self.break_min
+        if isinstance(c.get("stretchMin"), int):
+            self.stretch_min = max(0, int(c["stretchMin"]))
+            self.cfg["stretchMin"] = self.stretch_min
+        if c.get("chimes") is not None:
+            self.chimes_on = bool(c["chimes"])
+            self.cfg["chimes"] = self.chimes_on
+        if c.get("breakSnooze") is not None:
+            # one-shot command: arm the next break nudge to snooze, then delete
+            # the key so it can't re-trigger every poll cycle
+            try:
+                self._snooze_min = max(1, int(c["breakSnooze"]))
+            except (TypeError, ValueError):
+                self._snooze_min = SNOOZE_DEFAULT_MIN
+            try:
+                self._clear_command("breakSnooze")
+            except Exception:
+                pass
         if isinstance(c.get("goalMin"), int):
             self.goal_min = store.goal_minutes(c)
         if c.get("alwaysOnTop") is not None and bool(c["alwaysOnTop"]) != bool(self.cfg.get("alwaysOnTop", True)):
@@ -1114,6 +1169,7 @@ class PetEngine:
         self.os_app = _app.foreground_app()
         self._update_bubble(now)
         self._break_nudge(now)
+        self._stretch_nudge(now)
         # focus session lifecycle (grow / wilt / complete) + mood + tool XP
         self._focus_tick()
         if self.os_active:
@@ -1186,16 +1242,56 @@ class PetEngine:
             elif self.break_min > 0 and not self._break_shown \
                     and now - self.break_track_start >= self.break_min * 60 \
                     and now - self._last_break > BREAK_COOLDOWN_SECS:
+                snooze = self._snooze_min
+                if snooze > 0:
+                    # one-shot snooze: replace the nudge with a deferral, then
+                    # re-arm the streak clock so the nudge re-fires in N min
+                    self._snooze_min = 0
+                    self._last_break = now
+                    self._stretch_start = now
+                    self.break_track_start = now + snooze * 60 - self.break_min * 60
+                    self.bubble_text = "Snoozed %d min \u2014 see you at %s" % (
+                        snooze, time.strftime("%H:%M", time.localtime(now + snooze * 60)))
+                    self.bubble_until = now + BREAK_NUDGE_SECS
+                    self._log("breakSnooze", mins=snooze)
+                    self._chime("break")
+                    return
                 self._break_shown = True
                 self._last_break = now
+                self._stretch_start = now
                 mins = int((now - self.break_track_start) / 60)
-                self.bubble_text = "Deep in it for %d min \u2014 take 5?" % mins
+                self.bubble_text = "Time for a break \u2014 stretch!"
                 self.bubble_until = now + BREAK_NUDGE_SECS
                 self.attention_until = now + FOCUS_ATTENTION_SECS
                 self._log("break", mins=mins)
                 self.mood = "tired"
+                self._chime("break")
         else:
             self.break_track_start = None
             self._break_shown = False
+            self._stretch_start = None
             self.bubble_text = ""
             self.bubble_until = 0
+
+    def _stretch_nudge(self, now):
+        """Continuous-work stretch reminder: fires once per stretchMin of
+        unbroken work (idle resets the clock, break bubbles count as rest)."""
+        if not self.os_active:
+            self._stretch_start = None
+            return
+        if self.stretch_min <= 0:
+            return
+        if self._stretch_start is None:
+            self._stretch_start = now
+            return
+        if now - self._last_stretch < STRETCH_COOLDOWN_SECS:
+            return
+        since = now - max(self._stretch_start, self._last_break)
+        if since >= self.stretch_min * 60:
+            self._stretch_start = now
+            self._last_stretch = now
+            self.bubble_text = "Stretch! Neck + shoulders \U0001f9d8"
+            self.bubble_until = now + BREAK_NUDGE_SECS
+            self._award_xp(XP_STRETCH, "stretch")
+            self._log("stretch", mins=int(since / 60))
+            self._chime("stretch")

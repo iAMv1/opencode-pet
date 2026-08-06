@@ -59,6 +59,20 @@ def no_window(monkeypatch):
     return FakeWin
 
 
+@pytest.fixture(autouse=True)
+def _silent_chimes(monkeypatch):
+    """Record winsound.Beep instead of beeping: chimes fire from engine events
+    (start/complete/break/stretch) throughout the suite, and real beeps would
+    blare during runs. Tests assert on desktop.sounds._TEST_BEEPS."""
+    import desktop.sounds as sounds
+
+    rec = []
+    monkeypatch.setattr(sounds.winsound, "Beep", lambda freq, ms: rec.append((freq, ms)))
+    sounds._TEST_BEEPS = rec
+    yield rec
+    sounds._TEST_BEEPS = None
+
+
 def make_sessions(*states, stale=False, updated_at=None, **extra):
     """Build a list of fake status dicts in the shape read_status() returns.
 
