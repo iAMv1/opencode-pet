@@ -1030,6 +1030,39 @@ body {
 .ins-ic.amber { color: var(--accent); background: rgba(246, 179, 92, 0.1); border-color: rgba(246, 179, 92, 0.3); }
 .ins-main { font-weight: 580; color: var(--text); }
 
+/* ---------- pet voice (P8): insights + memory lane ---------- */
+.ins-voice {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px; margin-bottom: 10px;
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(90deg, rgba(246, 179, 92, 0.10), rgba(255, 122, 106, 0.05)),
+    var(--bg1);
+  border: 1px solid rgba(246, 179, 92, 0.28);
+}
+.ins-voice-line { font-size: 12px; line-height: 1.5; color: var(--text2); font-style: italic; }
+.ins-voice-line::before { content: "\201C"; color: var(--accent); font-style: normal; }
+.ins-voice-line::after { content: "\201D"; color: var(--accent); font-style: normal; }
+.lane { display: flex; flex-direction: column; gap: 9px; }
+.lane-row { display: flex; flex-direction: column; gap: 3px; }
+.lane-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.lane-day {
+  font-size: 10.5px; font-weight: 640; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text3);
+}
+.lane-day.today { color: var(--accent); }
+.lane-h { font-size: 11px; color: var(--text2); }
+.lane-bar {
+  height: 4px; border-radius: 2px; background: var(--bg3); overflow: hidden;
+}
+.lane-bar i {
+  display: block; height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, rgba(246, 179, 92, 0.45), var(--accent));
+  box-shadow: 0 0 8px -2px rgba(246, 179, 92, 0.6);
+}
+.lane-note { font-size: 11px; line-height: 1.5; color: var(--text2); font-style: italic; }
+.lane-note::before { content: "\201C"; color: var(--accent); font-style: normal; }
+
 /* ---------- week comparison ---------- */
 .cmp-k { letter-spacing: 0.08em; }
 .cmp-v {
@@ -1719,6 +1752,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Memory</div>
               <div id="memoryCard"></div>
+            </div>
+            <div class="rail-card">
+              <div class="sec-label" style="margin:0 0 10px">Memory Lane</div>
+              <div id="laneCard"></div>
             </div>
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Chronotype</div>
@@ -3173,6 +3210,43 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      /* ---------- memory lane (P8): the pet narrates your week ---------- */
+      var _laneSig = "";
+      function renderLane(list) {
+        var el = document.getElementById("laneCard");
+        if (!el) return;
+        var sig = JSON.stringify(list || []);
+        if (sig === _laneSig && el.childElementCount) return;
+        _laneSig = sig;
+        if (!list || !list.length) {
+          el.innerHTML = '<div class="mem-empty">Give me a day \u2014 I\u2019ll remember it for you.</div>';
+          return;
+        }
+        var today = localDate(new Date());
+        var maxMin = 1;
+        list.forEach(function (d) { if (d.totalMin > maxMin) maxMin = d.totalMin; });
+        var rows = "";
+        list.forEach(function (d) {
+          var pct = Math.max(3, Math.round(d.totalMin / maxMin * 100));
+          var dt = new Date(d.date + "T12:00:00");
+          var label = isNaN(dt.getTime()) ? String(d.date).slice(5) : DAYS[dt.getDay()];
+          var peak = d.hourPeak == null ? "" : " \u00b7 peak " + fmtHour(d.hourPeak);
+          rows += '<div class="lane-row">' +
+            '<div class="lane-top"><span class="lane-day' + (d.date === today ? " today" : "") + '">' + label + '</span>' +
+            '<span class="lane-h">' + fmtDur(d.totalMin * 60) + peak + '</span></div>' +
+            '<span class="lane-bar" title="' + esc(d.date) + '"><i style="width:' + pct + '%"></i></span>' +
+            '<span class="lane-note">' + esc(String(d.note || "")) + '</span></div>';
+        });
+        el.innerHTML = '<div class="lane">' + rows + '</div>';
+      }
+
+      function refreshLane() {
+        if (!api) return;
+        api.get_memory_lane().then(function (list) {
+          if (Array.isArray(list)) renderLane(list);
+        }).catch(function () {});
+      }
+
       /* ---------- chronotype (P5): gene readout + data progress ---------- */
       function fmtHour(h) {
         h = ((Number(h) % 24) + 24) % 24;
@@ -3379,8 +3453,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         var sig = JSON.stringify(ins || {});
         if (sig === _insSig && el.childElementCount) return;
         _insSig = sig;
-        if (!ins || (!ins.bestDay && !ins.topApp)) { el.innerHTML = ""; return; }
-        var rows = "";
+        var voice = (ins.voice || []).map(function (l) {
+          return '<div class="ins-voice-line">' + esc(String(l)) + '</div>';
+        }).join("");
+        if (!ins || (!ins.bestDay && !ins.topApp && !voice)) { el.innerHTML = ""; return; }
+        var rows = voice ? '<div class="ins-voice">' + voice + '</div>' : "";
         if (ins.bestDay) {
           var dt = new Date(ins.bestDay.date + "T12:00:00");
           var name = isNaN(dt.getTime()) ? ins.bestDay.date : DAYS[dt.getDay()];
@@ -3489,6 +3566,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           renderPomo({ count: 3, nextIsLong: true, pomoMin: 25, pomoShort: 5, pomoLong: 15 });
           renderHeatmap(DEMO_WB_HISTORY_90);
           renderPeaks(DEMO_PEAKS);
+          renderLane(DEMO_LANE);
           return;
         }
         try {
@@ -3530,6 +3608,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         refreshPeaks();
         refreshRituals();
         refreshBarter();
+        refreshLane();
       }
 
       var FALLBACK_PETS = ["Pikachu", "Charmander", "Doraemon", "Gardevoir", "Giratina", "LPC Cat", "Emberkit"]
@@ -3564,8 +3643,27 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       var DEMO_INSIGHTS = {
         weekSeconds: 32400, prevWeekSeconds: 25200, deltaPct: 29,
         bestDay: { date: DEMO_WB_HISTORY[3].date, seconds: 8100 },
-        todaySeconds: 3600, topApp: { app: "VS Code", seconds: 7200 }
+        todaySeconds: 3600, topApp: { app: "VS Code", seconds: 7200 },
+        voice: ["3 days this week had wall-to-wall hours \u2014 that's how work becomes monuments",
+                "you wore 5 hats this week"]
       };
+      var DEMO_LANE = (function () {
+        var today = new Date();
+        var notes = [
+          "I watched you work past 3am \u2014 the night was yours",
+          "your deepest day \u2014 9.3h",
+          "a foggy day \u2014 45% of it was idle",
+          "a steady day \u2014 6.3h, and VS Code led the way",
+          "a still day \u2014 I rested with you",
+          "you visited 5 forms that day",
+          "a steady day \u2014 4.1h"
+        ];
+        var mins = [240, 558, 120, 378, 0, 300, 246];
+        return mins.map(function (m, i) {
+          var d = new Date(today.getTime() - (6 - i) * 86400000);
+          return { date: localDate(d), totalMin: m, appTop: "VS Code", hourPeak: 2, note: notes[i] };
+        });
+      })();
       var DEMO_FOCUS = { active: false, startedAt: 0, targetMin: 25, wilted: false, app: "", progress: 0 };
       var DEMO_GOAL = { goalMin: 120, todaySeconds: 3600, met: false, streak: 2 };
       var DEMO_PROFILE = { level: 7, xp: 64, xpNext: 400, xpPct: 0.16, mood: "happy", streak: 4,
@@ -3713,6 +3811,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       setInterval(refreshDayBody, 10000);
       setInterval(refreshRituals, 10000);
       setInterval(refreshBarter, 10000);
+      setInterval(refreshLane, 15000);
       setInterval(refreshWrapped, 20000);
       setInterval(refreshSparkline, 30000);
       setInterval(refreshWeekApps, 20000);

@@ -79,6 +79,17 @@ XP_BARTER = 20              # a traded form stage — the user's attention, paid
 BARTER_BUBBLE_SECS = 5.0    # barter ask / ceremony bubble lifetime
 BARTER_SHIMMER_SECS = 90    # periodic cast shimmer between stages (visual only)
 
+# ---------------------------------------------------------------- lifestyle alerts (P8)
+ALERT_BUBBLE_SECS = 6.0       # lifestyle-alert bubble lifetime
+ALERT_CHECK_SECS = 60         # re-evaluate alert conditions at most once/min
+ALERT_FLAP_EVENTS = 20        # churn needs MORE state transitions than this today
+ALERT_FLAP_MAX_MEDIAN = 60    # ...with a median state segment under this (seconds)
+ALERT_IDLE_RATIO = 0.60       # idle-warning fires when idle share passes this
+ALERT_IDLE_HOUR = 15          # ...and the clock has passed this hour
+ALERT_IDLE_MIN_SECS = 30 * 60 # ...but only once a real day has accumulated
+ALERT_WEEK_END_WEEKDAY = 6    # week-end review fires on Sunday (0 = Monday)
+ALERT_WEEK_END_HOUR = 20      # ...after 20:00
+
 # ---------------------------------------------------------------- physics
 PHYS_TICK_MS = 16.7
 PHYS_STEP_CLAMP_MS = 50     # clamp huge frame deltas (lag spike = jump)
@@ -137,6 +148,7 @@ class PetEngine:
         self._init_embody()
         self._init_rituals()
         self._init_barter()
+        self._init_alerts()
         self._load_wellbeing()
         self._load_focus_state()
         self._build_frame_cache()
@@ -1322,6 +1334,8 @@ class PetEngine:
         # P7: personal rituals + attention barter (daily derive + live progress)
         self._ritual_tick(now)
         self._barter_tick(now)
+        # P8: lifestyle alerts (churn / idle-fog / Sunday week-end review)
+        self._alert_tick(now)
 
     def _update_bubble(self, now):
         if now >= self.bubble_until:
@@ -1993,6 +2007,96 @@ class PetEngine:
                 and now - self._last_barter_shimmer >= BARTER_SHIMMER_SECS:
             self._last_barter_shimmer = now
             self.cast = {"until": now + 0.6, "started": now}
+
+    def _init_alerts(self):
+        # P8: lifestyle alerts (churn / idle-fog / week-end review) — at
+        # most ONE per day, guarded by the config alertDate so restarts can
+        # never re-fire today's bubble. Conditions are re-evaluated at most
+        # once a minute off the 2Hz tick path.
+        self._alert_date = str(self.cfg.get("alertDate", "") or "")
+        self._last_alert_check = 0.0
+
+    def _state_flap_median(self, now=None):
+        """Median gap (seconds) between today's state transitions in this
+        pet's log; None when there are not more than ALERT_FLAP_EVENTS of
+        them. The engine logs one 'state' line per transition, so gaps are
+        state segments — a low median is task-flitting."""
+        today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+        ts = []
+        try:
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % self.pet["id"]),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if e.get("kind") == "state" and time.strftime(
+                            "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
+                        ts.append(float(e.get("t", 0) or 0))
+        except Exception:
+            return None
+        if len(ts) <= ALERT_FLAP_EVENTS:
+            return None
+        ts.sort()
+        gaps = [b - a for a, b in zip(ts, ts[1:])]
+        if not gaps:
+            return None
+        gaps.sort()
+        return gaps[len(gaps) // 2]
+
+    def _idle_warning(self, now=None):
+        """Idle-fog warning: 60%+ of a REAL (>= 30min) day idle by 15:00."""
+        if time.localtime(now or time.time()).tm_hour < ALERT_IDLE_HOUR:
+            return False
+        wb = getattr(self, "_wb", None) or {}
+        total = int(sum(v for v in wb.values() if isinstance(v, (int, float))))
+        if total < ALERT_IDLE_MIN_SECS:
+            return False
+        idle = int(wb.get("Idle", 0) or 0)
+        return idle >= total * ALERT_IDLE_RATIO
+
+    def _alert_tick(self, now):
+        """P8 lifestyle alerts — at most one per day (config alertDate guard
+        survives restarts). Priority: churn (state-flap) > idle-fog warning >
+        Sunday week-end review. Re-evaluated at most once a minute and
+        deferred while a substantive bubble moment (attention_until) is
+        live, so an alert never interrupts a celebration. Logged as
+        kind "alert" for the dashboard to read back."""
+        if now - getattr(self, "_last_alert_check", 0.0) < ALERT_CHECK_SECS:
+            return
+        self._last_alert_check = now
+        today = time.strftime("%Y-%m-%d", time.localtime(now))
+        if getattr(self, "_alert_date", "") == today:
+            return
+        if now < getattr(self, "attention_until", 0.0):
+            return
+        kind = line = None
+        med = self._state_flap_median(now)
+        if med is not None and med < ALERT_FLAP_MAX_MEDIAN:
+            kind = "churn"
+            line = ("You're flitting between tasks every few seconds "
+                    "\u2014 I'll keep pace")
+        elif self._idle_warning(now):
+            kind = "idle_warn"
+            line = "Half the day is fog \u2014 save it while it's yours"
+        elif time.localtime(now).tm_wday == ALERT_WEEK_END_WEEKDAY \
+                and time.localtime(now).tm_hour >= ALERT_WEEK_END_HOUR:
+            kind = "week_review"
+            line = store.week_end_review(getattr(self, "_history", {}) or {})
+        if not line:
+            return
+        self._alert_date = today
+        self.cfg["alertDate"] = today
+        try:
+            c = store.load_config()
+            c["alertDate"] = today
+            store.save_config(c)
+        except Exception:
+            pass
+        self.bubble_text = line
+        self.bubble_until = now + ALERT_BUBBLE_SECS
+        self._log("alert", alert=kind, line=line)
 
     def _barter_glow(self):
         """Attention-barter radiance: a warm glow whose size and alpha rise

@@ -21,6 +21,7 @@ _WEB_METHODS = [
     "get_goal_state", "get_pomo_state", "get_weekly_wrapped", "get_week_apps",
     "get_focus_peaks", "get_memory_state", "get_chronotype", "get_day_health",
     "get_rituals", "get_barter_state", "barter_pay",
+    "get_memory_lane", "get_alerts",
     "save_config", "next_pet", "prev_pet", "hide_pet", "show_pet",
     "hide_control", "quit",
 ]
@@ -145,11 +146,16 @@ class ControlApi:
           bestDay                       : {date, seconds} or None (ties -> first)
           todaySeconds                  : seconds accrued today so far
           topApp                        : {app, seconds} or None (today, >= 30s)
+          voice                         : pet-voice narrations of the week
+              (P8, store.voice_insights) — 0-4 lines; the JS contract only
+              adds a field, never removes one.
         """
         d = store.read_wellbeing()
+        empty = {"weekSeconds": 0, "prevWeekSeconds": 0, "deltaPct": None,
+                 "bestDay": None, "todaySeconds": 0, "topApp": None,
+                 "voice": []}
         if d is None:
-            return {"weekSeconds": 0, "prevWeekSeconds": 0, "deltaPct": None,
-                    "bestDay": None, "todaySeconds": 0, "topApp": None}
+            return empty
         history = d.get("history") if isinstance(d.get("history"), dict) else {}
         history = store._fold_today(history, d)
         today = datetime.date.today()
@@ -173,6 +179,46 @@ class ControlApi:
                 if apps:
                     apps.sort(key=lambda x: -x[1])
                     top_app = {"app": apps[0][0], "seconds": apps[0][1]}
+        # P8: pet-voice week narrations — fold today's live hour/app maps in
+        # so the voice reflects the running day (same rule as the analyses).
+        hour_hist = dict(d.get("hourHistory")) if isinstance(d.get("hourHistory"), dict) else {}
+        app_hist = dict(d.get("appHistory")) if isinstance(d.get("appHistory"), dict) else {}
+        if d.get("date") == today.isoformat():
+            if isinstance(d.get("hourToday"), dict) and d["hourToday"]:
+                day_hours = dict(hour_hist.get(today.isoformat(), {}))
+                for h, s in d["hourToday"].items():
+                    if isinstance(s, (int, float)):
+                        try:
+                            day_hours[int(h) % 24] = day_hours.get(int(h) % 24, 0) + int(s)
+                        except (TypeError, ValueError):
+                            pass
+                hour_hist[today.isoformat()] = day_hours
+            if isinstance(d.get("apps"), dict) and d["apps"]:
+                day_apps = dict(app_hist.get(today.isoformat(), {}))
+                for a, s in d["apps"].items():
+                    if isinstance(s, (int, float)):
+                        day_apps[a] = day_apps.get(a, 0) + int(s)
+                app_hist[today.isoformat()] = day_apps
+        starts = done = 0
+        try:
+            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if time.time() - (e.get("t") or 0) >= store.WEEK_SECS:
+                        continue
+                    if e.get("kind") == "focusStart":
+                        starts += 1
+                    elif e.get("kind") == "focusDone":
+                        done += 1
+        except Exception:
+            pass
+        voice = store.voice_insights(
+            history, hour_hist, app_hist, focus={"starts": starts, "done": done})
         return {
             "weekSeconds": week_secs,
             "prevWeekSeconds": prev_secs,
@@ -180,6 +226,7 @@ class ControlApi:
             "bestDay": best_day,
             "todaySeconds": running,
             "topApp": top_app,
+            "voice": voice,
         }
 
     def get_focus_peaks(self, days=7):
@@ -335,6 +382,55 @@ class ControlApi:
                                  or store.MEMORY_MAX_DEFAULT),
                 "epochFlags": [{"id": eid, "name": name, "desc": desc}
                                for (eid, name, desc) in store.EPOCHS if eid in flags]}
+
+    def get_memory_lane(self):
+        """The pet's memory lane (P8): the last 7 days, each narrated in the
+        pet's voice from the REAL shape of that day — store.build_lane +
+        day_note are the same pure rules the pet itself would use, so the
+        card can never disagree with the pet's own telling."""
+        d = store.read_wellbeing()
+        events = []
+        try:
+            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        events.append(json.loads(line))
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return store.build_lane(d if isinstance(d, dict) else None, events)
+
+    def get_alerts(self, limit=3):
+        """Lifestyle alerts (P8): today's pet-bubble alert line (when one
+        fired) plus the most recent alert events. The pet fires at most one
+        per day (config alertDate guard) and logs each as kind "alert";
+        this API only reads that log."""
+        out = {"today": "", "last": []}
+        try:
+            pet_id = sprites.PETS[store.load_config().get("petIdx", 0) % len(sprites.PETS)]["id"]
+            today = time.strftime("%Y-%m-%d")
+            with open(os.path.join(store.PET_DIR, "activity-%s.jsonl" % pet_id),
+                      encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if e.get("kind") != "alert":
+                        continue
+                    entry = {"alert": e.get("alert", ""),
+                             "line": e.get("line", ""), "t": e.get("t", 0)}
+                    if not out["today"] and time.strftime(
+                            "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
+                        out["today"] = entry["line"]
+                    out["last"].append(entry)
+            out["last"] = out["last"][-int(limit):]
+        except Exception:
+            pass
+        return out
 
     def get_chronotype(self):
         """Chronotype (P5): the pet's gene state read from the user's REAL

@@ -224,7 +224,8 @@ def load_config():
                "chronoType": "larval", "chronoDate": "", "chronoWeekDate": "",
                "ritualDate": "", "ritualList": [], "ritualDone": [],
                "ritualCloseDate": "",
-               "barterBank": 0, "barterStage": 0, "barterOfferDate": ""}
+               "barterBank": 0, "barterStage": 0, "barterOfferDate": "",
+               "alertDate": ""}
     # A concurrent locked save in the other process briefly blocks reads of
     # the locked byte (ERROR_LOCK_VIOLATION); retry a couple of times rather
     # than falling back to defaults for a transient microsecond window.
@@ -771,6 +772,227 @@ def build_dream(wellbeing):
     if top:
         line += " %s led the way." % top
     return line
+
+
+# ---------------------------------------------------------------- memory lane (P8)
+LANE_DAYS = 7                 # the lane always shows the last 7 calendar days
+LANE_IDLE_RATIO = 0.45        # idle share above this -> "foggy day" note
+LANE_QUIET_MAX_SECS = 3600    # below this total -> "a still day" note
+LANE_MULTI_PET_MIN = 2        # pet switches >= this many -> multi-pet note
+VOICE_MAX_LINES = 4           # at most 4 pet-voice narrations per week
+VOICE_WALL_HOURS = 8          # a day is "wall-to-wall" with this many saturated hours
+VOICE_WALL_DAYS = 3           # ...and the week needs at least this many such days
+VOICE_IDLE_RATIO = 0.30       # idle share above this -> idle-fog voice line
+VOICE_APPS_MIN = 5            # distinct apps >= this many -> "N hats" voice line
+VOICE_STREAK_MIN = 3          # streak >= this many days -> praise voice line
+
+
+def _day_apps(app_hist, day, d=None):
+    """Per-day app map for one date, folding the file's live apps map in
+    when the file itself holds that day (same rule as build_dream)."""
+    apps = dict(app_hist.get(day)) if isinstance(app_hist.get(day), dict) else {}
+    if d and d.get("date") == day and isinstance(d.get("apps"), dict):
+        for a, s in d["apps"].items():
+            if isinstance(s, (int, float)):
+                apps[a] = apps.get(a, 0) + int(s)
+    return apps
+
+
+def _day_hours(hour_hist, day, d=None):
+    """Per-day hour buckets for one date (int keys), folding today's live
+    hourToday in (same rule as hour_buckets)."""
+    hours = {}
+    raw = hour_hist.get(day)
+    if isinstance(raw, dict):
+        for h, s in raw.items():
+            if isinstance(s, (int, float)) and (isinstance(h, int) or str(h).isdigit()):
+                hours[int(h) % 24] = hours.get(int(h) % 24, 0) + int(s)
+    if d and d.get("date") == day and isinstance(d.get("hourToday"), dict):
+        for h, s in d["hourToday"].items():
+            if isinstance(s, (int, float)):
+                try:
+                    hours[int(h) % 24] = hours.get(int(h) % 24, 0) + int(s)
+                except (TypeError, ValueError):
+                    pass
+    return hours
+
+
+def day_note(day, data):
+    """Pet-voice one-liner for one lane day, chosen by the REAL shape of its
+    data (the same rule the API card shows, so they can never disagree).
+
+    Priority: record (deepest of the lane) > night-owl > quiet > idle-heavy
+    > multi-pet > error > pattern. Deterministic: the same data always
+    yields the same line, and the pet's memory lane is its own narration —
+    numbers and templates only, no randomness.
+    """
+    data = data or {}
+    total = int(data.get("total", 0) or 0)
+    if total <= 0:
+        return "a still day \u2014 nothing recorded, I rested too"
+    if total == int(data.get("weekMax", 0) or 0):
+        return "your deepest day \u2014 %s" % _fmt_hours(total)
+    hours = data.get("hours") or {}
+    if _range_secs(hours, 0, 6) >= NIGHT_OWL_MIN_SECS:
+        return "I watched you work past 3am \u2014 the night was yours"
+    if total < LANE_QUIET_MAX_SECS:
+        return "a still day \u2014 I rested with you"
+    apps = data.get("apps") or {}
+    idle = int(apps.get("Idle", 0) or 0)
+    if idle >= total * LANE_IDLE_RATIO:
+        return "a foggy day \u2014 %d%% of it was idle" % (idle * 100 // total)
+    if int(data.get("petSwitches", 0) or 0) >= LANE_MULTI_PET_MIN:
+        return "you visited %d forms that day" % (int(data.get("petSwitches", 0)) + 1)
+    if int(data.get("errors", 0) or 0) > 0:
+        return "a day with static \u2014 I felt the glitches"
+    top = max((a for a in apps if a != "Idle"), key=apps.get, default="")
+    if top:
+        return "a steady day \u2014 %s, and %s led the way" % (_fmt_hours(total), top)
+    return "a steady day \u2014 %s" % _fmt_hours(total)
+
+
+def build_lane(wellbeing, events=None, days=LANE_DAYS):
+    """The pet's memory lane: one narrated entry per day for the last `days`
+    calendar days (ascending, today last), computed from REAL data.
+
+    Each entry is {date, totalMin, appTop, hourPeak, note}: totalMin is the
+    day's tracked minutes (idle included, matching history semantics), appTop
+    the day's top non-idle app (None when none), hourPeak the busiest hour
+    (ties -> earliest; None when no data), note the pet's line from day_note.
+    `events` is an optional list of activity-log dicts for per-day error and
+    pet-switch counts. Pure + deterministic: the same inputs always yield
+    the same lane.
+    """
+    d = wellbeing
+    if not isinstance(d, dict):
+        d = {}
+    history = d.get("history") if isinstance(d.get("history"), dict) else {}
+    app_hist = d.get("appHistory") if isinstance(d.get("appHistory"), dict) else {}
+    hour_hist = d.get("hourHistory") if isinstance(d.get("hourHistory"), dict) else {}
+    today = datetime.date.today()
+    week_days = [(today - datetime.timedelta(days=i)).isoformat()
+                 for i in range(days - 1, -1, -1)]
+    per_errors = {}
+    per_switches = {}
+    for e in events or []:
+        if not isinstance(e, dict):
+            continue
+        day = time.strftime("%Y-%m-%d", time.localtime(e.get("t", 0) or 0))
+        if e.get("kind") == "state" and e.get("state") in ("error", "retry"):
+            per_errors[day] = per_errors.get(day, 0) + 1
+        elif e.get("kind") == "petSwitch":
+            per_switches[day] = per_switches.get(day, 0) + 1
+    per_day = {}
+    for day in week_days:
+        total = int(history.get(day, 0) or 0)
+        if d.get("date") == day:
+            running = int(sum(v for v in (d.get("apps") or {}).values()
+                              if isinstance(v, (int, float))))
+            if running > 0:
+                total += running
+        per_day[day] = total
+    week_max = max(per_day.values()) if per_day else 0
+    out = []
+    for day in week_days:
+        apps = _day_apps(app_hist, day, d)
+        app_names = [a for a in apps if a != "Idle"
+                     and isinstance(apps.get(a), (int, float)) and apps[a] > 0]
+        app_top = max(app_names, key=apps.get) if app_names else None
+        hours = _day_hours(hour_hist, day, d)
+        peak = -1
+        if hours:
+            peak = max(hours, key=lambda h: (hours[h], -h))  # ties -> earliest
+        data = {"total": per_day[day], "apps": apps, "hours": hours,
+                "errors": per_errors.get(day, 0),
+                "petSwitches": per_switches.get(day, 0), "weekMax": week_max}
+        out.append({"date": day,
+                    "totalMin": int(per_day[day]) // 60,
+                    "appTop": app_top,
+                    "hourPeak": peak if peak >= 0 else None,
+                    "note": day_note(day, data)})
+    return out
+
+
+def voice_insights(history, hour_history, app_history, focus=None, today=None):
+    """Pet-voice narrations of the last 7 days, 0..VOICE_MAX_LINES lines.
+
+    Each line fires on REAL week data, in priority order: wall-to-wall
+    deep-work days, midnight outshining afternoons, idle-fog share, app
+    variety ("N hats"), the honest focus-candle confession (started sessions
+    with zero completions \u2014 non-punitive), and streak praise. Capped at
+    4 so the pet narrates, never floods. `focus` is an optional
+    {"starts", "done"} week count from the activity log.
+    """
+    today = today or datetime.date.today()
+    hist = history or {}
+    hh = hour_history or {}
+    ah = app_history or {}
+    week_days = [(today - datetime.timedelta(days=i)).isoformat() for i in range(7)]
+    lines = []
+    # deep work: >= VOICE_WALL_DAYS days with >= VOICE_WALL_HOURS saturated hours
+    wall = 0
+    night = afternoon = 0
+    for day in week_days:
+        day_map = hh.get(day)
+        if not isinstance(day_map, dict):
+            continue
+        if sum(1 for s in day_map.values()
+               if isinstance(s, (int, float)) and s >= CHRONO_ACTIVE_FLOOR) >= VOICE_WALL_HOURS:
+            wall += 1
+        for h, s in day_map.items():
+            if not isinstance(s, (int, float)):
+                continue
+            try:
+                h = int(h) % 24
+            except (TypeError, ValueError):
+                continue
+            if h < 6:
+                night += int(s)
+            elif 12 <= h < 18:
+                afternoon += int(s)
+    if wall >= VOICE_WALL_DAYS:
+        lines.append("%d days this week had wall-to-wall hours \u2014 "
+                     "that's how work becomes monuments" % wall)
+    if night > 0 and night > afternoon:
+        lines.append("your midnight hours outshine your afternoons")
+    # idle-fog share of the week's tracked time
+    idle = total = 0
+    app_names = set()
+    for day in week_days:
+        day_map = ah.get(day)
+        if not isinstance(day_map, dict):
+            continue
+        for a, s in day_map.items():
+            if not isinstance(s, (int, float)):
+                continue
+            total += int(s)
+            if a == "Idle":
+                idle += int(s)
+            elif int(s) > 0:
+                app_names.add(a)
+    if total > 0 and idle >= total * VOICE_IDLE_RATIO:
+        lines.append("%d%% of your week slipped into idle fog" % (idle * 100 // total))
+    if len(app_names) >= VOICE_APPS_MIN:
+        lines.append("you wore %d hats this week" % len(app_names))
+    f = focus or {}
+    starts = int(f.get("starts", 0) or 0)
+    done = int(f.get("done", 0) or 0)
+    if starts > 0 and done == 0:
+        lines.append("you've lit %d candles but let them all burn out \u2014 "
+                     "I'm here when you want to keep one" % starts)
+    streak = streak_from_history(hist)
+    if streak >= VOICE_STREAK_MIN:
+        lines.append("%d days in a row \u2014 I'm counting with you" % streak)
+    return lines[:VOICE_MAX_LINES]
+
+
+def week_end_review(history, today=None):
+    """Sunday-evening week close in the pet's voice: the week's REAL total
+    plus a tease of next week's ritual (guard the user's sharpest hour)."""
+    week, _ = week_window(history or {}, today=today or datetime.date.today())
+    total = sum(week.values())
+    return ("The week closed at %s \u2014 next week I'll guard your "
+            "sharpest hour." % _fmt_hours(total))
 
 
 # ---------------------------------------------------------------- epoch markers
