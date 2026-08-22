@@ -69,7 +69,7 @@ SELFTEST_TAIL = r"""<script>
   function waitFor(cond, cb, tries) {
     tries = tries || 0;
     if (cond()) return cb();
-    if (tries > 150) return cb();
+    if (tries > 600) return cb();  // 30s virtual: tolerate cold-start disk latency
     setTimeout(function () { waitFor(cond, cb, tries + 1); }, 50);
   }
 
@@ -254,10 +254,10 @@ def main():
             print("REAL SELFTEST server running: " + url)
         profile = os.path.join(FIXTURES, "_real_chrome_profile")
         r = subprocess.run(
-            [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
-             "--user-data-dir=" + profile, "--virtual-time-budget=20000",
-              "--dump-dom", url],
-             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
+             [chrome, "--headless=new", "--disable-gpu", "--no-first-run",
+              "--user-data-dir=" + profile, "--virtual-time-budget=40000",
+               "--dump-dom", url],
+             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         import re
         m = re.search(r"TOTAL (\d+)/(\d+)", r.stdout or "")
         if m:

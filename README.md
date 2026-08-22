@@ -9,7 +9,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/iAMv1/opencode-pet/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v0.6.0-brightgreen?style=for-the-badge)](https://github.com/iAMv1/opencode-pet/releases/tag/v0.6.0)
+[![Release](https://img.shields.io/badge/Release-v0.6.1-brightgreen?style=for-the-badge)](https://github.com/iAMv1/opencode-pet/releases/tag/v0.6.1)
 
 ---
 

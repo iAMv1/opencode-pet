@@ -182,6 +182,10 @@ class TestGoalEngine:
 
     def test_goal_celebration_sets_cast_flash(self, pet_dir, no_window, monkeypatch):
         eng = _active_engine(pet_dir, no_window, monkeypatch)
+        # Freeze the clock: the cast flash lasts GOAL_CAST_SECS (1s), so a slow
+        # tick under load can otherwise let it expire before we assert.
+        frozen = time.time()
+        monkeypatch.setattr(time, "time", lambda: frozen)
         _drive(eng)
-        assert eng.cast is not None and eng.cast.get("until", 0) > time.time()
+        assert eng.cast is not None and eng.cast.get("until", 0) > frozen
         assert eng.mood == "happy"
