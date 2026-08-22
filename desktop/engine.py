@@ -112,6 +112,7 @@ CURSOR_LOOK_SECS = 2.5        # how long the thinking-flip lasts
 CURSOR_LOOK_COOLDOWN = 180    # max one cursor look per 3 min
 PERCH_COOLDOWN_SECS = 1800    # max one perch-chatter line per 30 min
 AGENT_ERROR_COOLDOWN_SECS = 900  # max one agent-error concern line per 15 min
+ERROR_REACTION_COOLDOWN_SECS = 60  # rate-limit the short empathy fallback too
 WANDER_IDLE_SIT_SECS = 120    # OS idle this long -> the pet sits (waiting)
 WANDER_SIDE_CHANCE = 0.20     # app change -> chance the pet steps toward it
 
@@ -191,6 +192,9 @@ class PetEngine:
         self.sessions = []
         self.os_app = ""
         self.os_active = False
+        # last time the user was active; seeded at boot so a resumed focus
+        # session gets one full wilt window before an idle wilt can fire
+        self._last_os_active_t = time.time()
         self.roam_after_ms = ROAM_INITIAL_MS
         self.walk_factor = self.cfg["walk"] / 100.0
         self.anim = sprites.pet_states(self.pet)[0]
@@ -198,6 +202,7 @@ class PetEngine:
         self.acc = 0.0
         self.bubble_text = ""
         self.bubble_until = 0.0
+        self.bubble_pri = 0    # 1 ambient chatter, 2 reactive state lines, 3 milestone events
         self.running = True
         self._frame_cache = {}
         self._last_act = 0.0
@@ -239,6 +244,10 @@ class PetEngine:
         self.focus_wilted = False
         self._focus_app = ""
         self._focus_tag = ""
+        # True only when this process intends to overwrite the tag (fresh
+        # session start); otherwise _save_focus_state preserves a tag the
+        # dashboard wrote since our last save (cross-process field merge).
+        self._focus_tag_dirty = False
 
     def _init_growth(self):
         # daily focus goal (config: goalMin minutes; lastGoalDate = last day met)
@@ -314,11 +323,10 @@ class PetEngine:
         self._barter_glow_cache = {}   # stage -> prerendered radiance glow
 
     def _log(self, kind, **data):
-        """Append one JSON line to THIS pet's activity log â€” one pet, one memory."""
+        """Append one JSON line to THIS pet's activity log — one pet, one memory."""
         try:
-            log_path = store.activity_log_path(self.pet["id"])
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
+            store.append_activity(self.pet["id"],
+                                  {"t": time.time(), "kind": kind, **data})
             # P10: cap the log (size/age). At most once per day, in-process and
             # across restarts (the prune persists its date into config); a prune
             # failure must never break the append above.
@@ -398,12 +406,12 @@ class PetEngine:
     def _save_wellbeing(self):
         try:
             os.makedirs(store.PET_DIR, exist_ok=True)
-            json.dump({"date": self._wb_date, "apps": self._wb,
-                       "history": getattr(self, "_history", {}),
-                       "appHistory": getattr(self, "_app_history", {}),
-                       "hourToday": getattr(self, "_hour_today", {}),
-                       "hourHistory": getattr(self, "_hour_history", {})},
-                      open(store.WELLBEING_FILE, "w", encoding="utf-8"))
+            store.atomic_write_json(store.WELLBEING_FILE,
+                                    {"date": self._wb_date, "apps": self._wb,
+                                     "history": getattr(self, "_history", {}),
+                                     "appHistory": getattr(self, "_app_history", {}),
+                                     "hourToday": getattr(self, "_hour_today", {}),
+                                     "hourHistory": getattr(self, "_hour_history", {})})
         except Exception:
             pass
 
@@ -433,11 +441,23 @@ class PetEngine:
     def _save_focus_state(self):
         try:
             os.makedirs(store.PET_DIR, exist_ok=True)
-            json.dump({"active": self.focus_active, "startedAt": self.focus_started,
-                       "targetMin": self.focus_target_min, "wilted": self.focus_wilted,
-                       "app": self._focus_app, "progress": self._focus_progress(),
-                       "tag": self._focus_tag},
-                      open(store.FOCUS_FILE, "w", encoding="utf-8"))
+
+            def mut(cur):
+                d = {"active": self.focus_active, "startedAt": self.focus_started,
+                     "targetMin": self.focus_target_min, "wilted": self.focus_wilted,
+                     "app": self._focus_app, "progress": self._focus_progress(),
+                     "tag": self._focus_tag}
+                # The tag lives inside the ACTIVE session only: while the
+                # session runs, the disk tag is authoritative (the dashboard
+                # may set OR CLEAR it between our saves); ending the session
+                # clears it.
+                if self.focus_active and not self._focus_tag_dirty:
+                    d["tag"] = cur.get("tag") or ""
+                    self._focus_tag = d["tag"]
+                return d
+
+            if store.update_focus(mut):
+                self._focus_tag_dirty = False
         except Exception:
             pass
 
@@ -451,9 +471,14 @@ class PetEngine:
             self.focus_target_min = max(1, min(int(minutes), FOCUS_MAX_MIN))
         self.focus_active = True
         self.focus_started = time.time()
+        # a session started after hours idle gets one full wilt window before
+        # an idle wilt can fire, instead of wilting instantly
+        self._last_os_active_t = max(self._last_os_active_t,
+                                     self.focus_started - FOCUS_WILT_IDLE_SECS)
         self.focus_wilted = False
         self._focus_app = self.os_app or "Desktop"
         self._focus_tag = ""  # a new session starts untagged
+        self._focus_tag_dirty = True
         self._log("focusStart", targetMin=self.focus_target_min, app=self._focus_app)
         self._save_focus_state()
         self._chime("start")
@@ -500,9 +525,9 @@ class PetEngine:
         except Exception:
             pass
         now = time.time()
-        self.bubble_text = "Pomodoro %d done! Take a %s break" % (
-            count, "long" if long else "short")
-        self.bubble_until = now + FOCUS_BUBBLE_SECS
+        self._say("Pomodoro %d done! Take a %s break" % (
+            count, "long" if long else "short"),
+            FOCUS_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE, now=now)
 
     def _focus_tick(self):
         """Runs at ~2Hz while a session is live: grow, wilt on app-switch or
@@ -520,8 +545,8 @@ class PetEngine:
             self._save_focus_state()
             self._chime("complete")
             # celebration reaction
-            self.bubble_text = "Focus complete! +50 XP \u2728"
-            self.bubble_until = now + FOCUS_BUBBLE_SECS
+            self._say("Focus complete! +50 XP \u2728", FOCUS_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE, now=now)
             # pomodoro cycle (bubble wins over the XP line: the count is the
             # rarer, more actionable celebration)
             self._pomo_tick()
@@ -534,16 +559,16 @@ class PetEngine:
             if not self.focus_wilted:
                 self.focus_wilted = True
                 self._log("focusWilt", app=self.os_app, fromApp=self._focus_app)
-                self.bubble_text = "Hey, you left! My sprout is sad \ud83c\udf31"
-                self.bubble_until = now + FOCUS_BUBBLE_SECS
+                self._say("Hey, you left! My sprout is sad \ud83c\udf31",
+                          FOCUS_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self._save_focus_state()
                 self._embody_tick(now, force=True)  # P6: wilted focus -> storm
-        elif not self.os_active and now - self._wb_t > FOCUS_WILT_IDLE_SECS:
+        elif now - self._last_os_active_t > FOCUS_WILT_IDLE_SECS:
             if not self.focus_wilted:
                 self.focus_wilted = True
                 self._log("focusWilt", reason="idle")
-                self.bubble_text = "Zzz\u2026 sprout needs you awake \ud83c\udf31"
-                self.bubble_until = now + FOCUS_BUBBLE_SECS
+                self._say("Zzz\u2026 sprout needs you awake \ud83c\udf31",
+                          FOCUS_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self._save_focus_state()
                 self._embody_tick(now, force=True)  # P6: wilted focus -> storm
 
@@ -562,8 +587,8 @@ class PetEngine:
             self._log("levelUp", level=self.level)
         if leveled:
             self.mood = "happy"
-            self.bubble_text = "Level %d! \ud83c\udf89" % self.level
-            self.bubble_until = time.time() + LEVEL_BUBBLE_SECS
+            self._say("Level %d! \ud83c\udf89" % self.level, LEVEL_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE)
             self.attention_until = time.time() + LEVEL_ATTENTION_SECS
         self._save_growth()
 
@@ -624,8 +649,8 @@ class PetEngine:
         except Exception:
             pass
         self.mood = "happy"
-        self.bubble_text = "Daily goal met!"
-        self.bubble_until = now + GOAL_BUBBLE_SECS
+        self._say("Daily goal met!", GOAL_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self.cast = {"until": now + GOAL_CAST_SECS, "started": now}  # celebration cast flash
         self._log("goal", goalMin=self.goal_min)
@@ -676,7 +701,11 @@ class PetEngine:
         """Digital-wellbeing: attribute elapsed time to the active app."""
         now = time.time()
         date = time.strftime("%Y-%m-%d")
-        if date != self._wb_date:
+        if date != self._wb_date and date > self._wb_date:
+            # Forward day change only: fold the finished day and start clean.
+            # A backward jump (NTP correction, manual clock change) keeps the
+            # in-memory day as-is — re-running the rollover would fold the
+            # same day twice and corrupt streaks/epochs/weekly charts.
             self._rollover_wellbeing()
             self._wb_date = date
             self._wb = {}
@@ -843,7 +872,10 @@ class PetEngine:
     def set_pet(self, idx):
         idx %= len(sprites.PETS)
         self.cfg["petIdx"] = idx
-        store.save_config(self.cfg)
+        # Persist ONLY the changed key: writing the whole in-memory cfg would
+        # clobber fresher disk keys (xp/level/goal/chrono) with this process's
+        # boot-time snapshot — silent progress rollback on every pet switch.
+        store.save_config({"petIdx": idx})
         self.pet = sprites.PETS[idx]
         self._log("petSwitch", toIdx=idx)  # the NEW pet remembers the switch
         self._load_sheet()
@@ -1339,21 +1371,24 @@ class PetEngine:
             if st == "error" and (not prev_top or prev_top.get("state") != "error"):
                 now = time.time()
                 if mirror and now - self._last_agent_error >= AGENT_ERROR_COOLDOWN_SECS:
-                    # P9: the pet's concerned line â€” once per 15 min, and the
+                    # P9: the pet's concerned line — once per 15 min, and the
                     # error state itself is already mirrored by the status dot.
                     self._last_agent_error = now
-                    self.bubble_text = random.choice(self.AGENT_ERROR_LINES)
-                    self.bubble_until = now + 5
+                    self._say(random.choice(self.AGENT_ERROR_LINES), 5,
+                              pri=self.BUBBLE_PRI_MILESTONE, now=now)
                     self.mood = "tired"
                     self._log("agentError", sessionID=new_top.get("sessionID"))
-                else:
-                    line = random.choice(self.REACTIONS["error"])
-                    self.bubble_text = line
-                    self.bubble_until = time.time() + 5
+                elif now - getattr(self, "_last_error_reaction", 0.0) >= ERROR_REACTION_COOLDOWN_SECS:
+                    # short empathy line, rate-limited too — retry-loop flapping
+                    # between error/busy must not bubble every transition.
+                    # Reactive tier: never bury a genuine milestone over it.
+                    self._last_error_reaction = now
+                    self._say(random.choice(self.REACTIONS["error"]), 5,
+                              pri=self.BUBBLE_PRI_REACTIVE, now=now)
             elif st == "success" and prev_top and prev_top.get("state") == "busy":
-                self.bubble_text = random.choice(self.REACTIONS["success"])
-                self.bubble_until = time.time() + 4
                 self._award_xp(XP_COMPLETE_BONUS, "complete")
+                self._say(random.choice(self.REACTIONS["success"]), 4,
+                          pri=self.BUBBLE_PRI_MILESTONE, now=time.time())
                 if mirror:
                     # P9: mirror the win â€” happy mood + a brief cast flash.
                     self.mood = "happy"
@@ -1376,14 +1411,17 @@ class PetEngine:
             except Exception:
                 pass
             os._exit(0)
-        changed = False
+        # Only the keys THIS pass actually changed get persisted. Writing the
+        # whole in-memory cfg here clobbered fresher disk keys (xp/level/mood/
+        # lastGoalDate/chrono*) with boot-stale values — a silent XP/level/
+        # goal rollback triggered by any settings toggle.
+        touched = {}
         if isinstance(c.get("petIdx"), int) and c["petIdx"] % len(sprites.PETS) != self.cfg["petIdx"] % len(sprites.PETS):
-            self.set_pet(c["petIdx"])
-            changed = True
+            self.set_pet(c["petIdx"])  # persists the petIdx delta itself
         if isinstance(c.get("walk"), int) and c["walk"] != self.cfg.get("walk"):
             self.set_walk(c["walk"])
             self.cfg["walk"] = c["walk"]
-            changed = True
+            touched["walk"] = c["walk"]
         if isinstance(c.get("breakMin"), int):
             self.break_min = max(0, int(c["breakMin"]))
             self.cfg["breakMin"] = self.break_min
@@ -1398,13 +1436,13 @@ class PetEngine:
         for key in ("reactTyping", "reactCursor", "perchChatter", "agentMirror", "wanderIdle"):
             if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
                 self.cfg[key] = bool(c[key])
-                changed = True
+                touched[key] = bool(c[key])
         # user-control toggles: followCursor (pet follows the mouse) and
         # arrows (keyboard arrow control) — applied live like the others.
         for key in ("followCursor", "arrows"):
             if c.get(key) is not None and bool(c[key]) != bool(self.cfg.get(key, True)):
                 self.cfg[key] = bool(c[key])
-                changed = True
+                touched[key] = bool(c[key])
         # eventMap: re-sanitize against THIS pet's anims and swap the cached
         # resolution in place (invalid entries fall back to the default map)
         if c.get("eventMap") is not None:
@@ -1414,7 +1452,7 @@ class PetEngine:
                 self._event_map = m
                 if m is not None:
                     self.cfg["eventMap"] = m
-                changed = True
+                    touched["eventMap"] = m
         if c.get("breakSnooze") is not None:
             # one-shot command: arm the next break nudge to snooze, then delete
             # the key so it can't re-trigger every poll cycle
@@ -1437,7 +1475,7 @@ class PetEngine:
         if c.get("alwaysOnTop") is not None and bool(c["alwaysOnTop"]) != bool(self.cfg.get("alwaysOnTop", True)):
             self.set_topmost(bool(c["alwaysOnTop"]))
             self.cfg["alwaysOnTop"] = bool(c["alwaysOnTop"])
-            changed = True
+            touched["alwaysOnTop"] = bool(c["alwaysOnTop"])
         if c.get("hidePet"):
             self.set_visible(False)
             self._clear_command("hidePet")
@@ -1464,8 +1502,8 @@ class PetEngine:
             finally:
                 # clear even on failure so a bad command can't retrigger
                 self._clear_command("barterPay")
-        if changed:
-            store.save_config(self.cfg)
+        if touched:
+            store.save_config(touched)
 
     @staticmethod
     def _clear_command(key):
@@ -1473,11 +1511,11 @@ class PetEngine:
             with store._config_lock() as fd:
                 if fd is None:
                     return
-                c = store._read_locked_fd(fd)
+                c = store._read_locked_fd(fd, store.CONFIG_FILE)
                 if not isinstance(c, dict):
                     return
                 c.pop(key, None)
-                store._write_locked_fd(fd, c)
+                store._write_locked_fd(fd, store.CONFIG_FILE, c)
         except Exception:
             pass
 
@@ -1493,6 +1531,8 @@ class PetEngine:
         input_ms = _app.last_input_ms()
         self._input_ms = input_ms
         self.os_active = input_ms < store.ACTIVE_MS
+        if self.os_active:
+            self._last_os_active_t = now
         self.os_app = _app.foreground_app()
         self._cursor = _app.cursor_pos()
         self._follow_cursor_tick(now)
@@ -1621,6 +1661,39 @@ class PetEngine:
             self.walk_toward("right" if dx > 0 else "left")
             self._cursor_walk = True
 
+    # ---------------------------------------------------------- bubble speech
+    # Priority tiers so fast ambient chatter can never bury a milestone:
+    #   1 = ambient (perch line, waggle, "In <app>")
+    #   2 = reactive (tool-use label, session-state personality)
+    #   3 = milestone (goal met, level up, ripe/harvest, rituals, alerts...)
+    BUBBLE_PRI_AMBIENT = 1
+    BUBBLE_PRI_REACTIVE = 2
+    BUBBLE_PRI_MILESTONE = 3
+
+    def _say(self, text, secs, pri=BUBBLE_PRI_REACTIVE, now=None):
+        """Show a bubble unless a HIGHER-priority bubble is still live.
+        Equal priority may replace (state transitions should update). Returns
+        True when the bubble was shown."""
+        now = now if now is not None else time.time()
+        if text is None:
+            return False
+        if now < self.bubble_until and self.bubble_text \
+                and pri < getattr(self, "bubble_pri", 0):
+            return False
+        self.bubble_text = text
+        self.bubble_until = now + secs
+        self.bubble_pri = pri
+        return True
+
+    def _clear_bubble(self, now=None):
+        """Clear the bubble unless a milestone/reactive one is still live."""
+        now = now if now is not None else time.time()
+        if now < self.bubble_until and getattr(self, "bubble_pri", 0) >= self.BUBBLE_PRI_REACTIVE:
+            return
+        self.bubble_text = ""
+        self.bubble_until = 0.0
+        self.bubble_pri = 0
+
     def _perch_tick(self, now):
         """Workflow perch: when the foreground app changes, the pet
         occasionally bubbles an app-aware line (max 1/30min) and may step a
@@ -1634,9 +1707,9 @@ class PetEngine:
         if self.cfg.get("perchChatter", True) \
                 and now - self._last_perch >= PERCH_COOLDOWN_SECS:
             self._last_perch = now
-            self.bubble_text = random.choice(self.PERCH_LINES) % app
-            self.bubble_until = now + APP_BUBBLE_SECS
-            self._log("perch", app=app)
+            if self._say(random.choice(self.PERCH_LINES) % app,
+                         APP_BUBBLE_SECS, pri=self.BUBBLE_PRI_AMBIENT, now=now):
+                self._log("perch", app=app)
         if self.cfg.get("wanderIdle", True) and self.walk_factor > 0 \
                 and random.random() < WANDER_SIDE_CHANCE:
             vx = self.phys["vx"]
@@ -1649,6 +1722,7 @@ class PetEngine:
     def _update_bubble(self, now):
         if now >= self.bubble_until:
             self.bubble_text = ""
+            self.bubble_pri = 0
         st = self.sessions[0] if self.sessions else None
         fresh = st and not st.get("stale")
         state = st.get("state") if fresh else None
@@ -1667,24 +1741,24 @@ class PetEngine:
             base = tool.split(" ")[0].lower()
             label = friendly.get(base, tool)
             if base in friendly and len(tool.split(" ")) <= 1:
-                self.bubble_text = label
+                self._say(label, TOOL_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_REACTIVE, now=now)
             else:
-                self.bubble_text = tool
-            self.bubble_until = now + TOOL_BUBBLE_SECS
+                self._say(tool, TOOL_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_REACTIVE, now=now)
         # 2. Personality lines keyed on state transitions.
         elif state in self.BUBBLES:
             line = self._personality(state, now=now)
             if line:
-                self.bubble_text = line
-                self.bubble_until = now + PERSONALITY_BUBBLE_SECS
-        # 3. No active sessions, OS is active â†’ show foreground app.
+                self._say(line, PERSONALITY_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_REACTIVE, now=now)
+        # 3. No active sessions, OS is active → show foreground app.
         elif not fresh and self.os_active and self.os_app and self.os_app not in ("Explorer", "Program Manager", ""):
-            self.bubble_text = "In " + self.os_app
-            self.bubble_until = now + APP_BUBBLE_SECS
-        # 4. Nothing to say.
+            self._say("In " + self.os_app, APP_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_AMBIENT, now=now)
+        # 4. Nothing to say (milestone bubbles survive idle until they expire).
         elif not self.os_active and not fresh:
-            self.bubble_text = ""
-            self.bubble_until = 0
+            self._clear_bubble(now)
 
     def _personality(self, state_key, ttl=6, now=None):
         """Pick a personality line with decay suppression so we don't re-fire
@@ -1722,9 +1796,9 @@ class PetEngine:
                     self._last_break = now
                     self._stretch_start = now
                     self.break_track_start = now + snooze * 60 - self.break_min * 60
-                    self.bubble_text = "Snoozed %d min \u2014 see you at %s" % (
-                        snooze, time.strftime("%H:%M", time.localtime(now + snooze * 60)))
-                    self.bubble_until = now + BREAK_NUDGE_SECS
+                    self._say("Snoozed %d min \u2014 see you at %s" % (
+                        snooze, time.strftime("%H:%M", time.localtime(now + snooze * 60))),
+                        BREAK_NUDGE_SECS, pri=self.BUBBLE_PRI_MILESTONE, now=now)
                     self._log("breakSnooze", mins=snooze)
                     self._chime("break")
                     return
@@ -1732,8 +1806,8 @@ class PetEngine:
                 self._last_break = now
                 self._stretch_start = now
                 mins = int((now - self.break_track_start) / 60)
-                self.bubble_text = "Time for a break \u2014 stretch!"
-                self.bubble_until = now + BREAK_NUDGE_SECS
+                self._say("Time for a break \u2014 stretch!", BREAK_NUDGE_SECS,
+                          pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self.attention_until = now + FOCUS_ATTENTION_SECS
                 self._log("break", mins=mins)
                 self.mood = "tired"
@@ -1742,8 +1816,7 @@ class PetEngine:
             self.break_track_start = None
             self._break_shown = False
             self._stretch_start = None
-            self.bubble_text = ""
-            self.bubble_until = 0
+            self._clear_bubble(now)
 
     def _stretch_nudge(self, now):
         """Continuous-work stretch reminder: fires once per stretchMin of
@@ -1762,8 +1835,8 @@ class PetEngine:
         if since >= self.stretch_min * 60:
             self._stretch_start = now
             self._last_stretch = now
-            self.bubble_text = "Stretch! Neck + shoulders \U0001f9d8"
-            self.bubble_until = now + BREAK_NUDGE_SECS
+            self._say("Stretch! Neck + shoulders \U0001f9d8", BREAK_NUDGE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE, now=now)
             self._award_xp(XP_STRETCH, "stretch")
             self._log("stretch", mins=int(since / 60))
             self._chime("stretch")
@@ -1787,8 +1860,8 @@ class PetEngine:
             store.save_config(c)
         except Exception:
             pass
-        self.bubble_text = dream
-        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self._say(dream, WAKE_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self._log("dream")
 
@@ -1812,8 +1885,8 @@ class PetEngine:
                     store.save_config(c)
                 except Exception:
                     pass
-                self.bubble_text = random.choice(WAKE_LINES)
-                self.bubble_until = now + WAKE_BUBBLE_SECS
+                self._say(random.choice(WAKE_LINES), WAKE_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self._log("wake", idleSecs=int(idle_secs))
             self._try_dream(now)
         elif not self.os_active and self._was_active:
@@ -1831,8 +1904,8 @@ class PetEngine:
         line = store.weekday_line(time.localtime().tm_wday)
         if not line:
             return
-        self.bubble_text = line
-        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self._say(line, WAKE_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("weekday")
 
     def _echo_tick(self, now):
@@ -1846,7 +1919,8 @@ class PetEngine:
         apps = self._app_history.get(key)
         if not isinstance(hour, dict) or not isinstance(apps, dict):
             return
-        secs = int(hour.get(str(time.localtime().tm_hour), 0) or 0)
+        # hourHistory maps are normalized to int hour keys at load time
+        secs = int(hour.get(time.localtime().tm_hour, 0) or 0)
         if secs < ECHO_MIN_SECS:
             return
         top = max(apps, key=lambda k: int(apps.get(k, 0) or 0)) if apps else None
@@ -1857,9 +1931,9 @@ class PetEngine:
             return
         self._echo_at = now
         label = win32.APP_LABELS.get(top, top)
-        self.bubble_text = "This time last week you were in %s \u2014 %d min deep. I remember." \
-            % (label, int(secs // 60))
-        self.bubble_until = now + WAKE_BUBBLE_SECS
+        self._say("This time last week you were in %s \u2014 %d min deep. I remember."
+                  % (label, int(secs // 60)),
+                  WAKE_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("echo", app=top, mins=int(secs // 60))
 
     # ------------------------------------------------------- episodic memory
@@ -1960,8 +2034,8 @@ class PetEngine:
             pass
         self.cfg["memoryCount"] = count + 1
         self.cfg["memoryDate"] = today
-        self.bubble_text = line
-        self.bubble_until = now + MEMORY_BUBBLE_SECS
+        self._say(line, MEMORY_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("memory", template=tpl)
         # mood shimmer (aura) instead of XP: brief happy, then restore
         self._shimmer_mood = self.mood
@@ -2010,8 +2084,8 @@ class PetEngine:
             pass
         self._award_xp(XP_EPOCH, "epoch")
         self.mood = "happy"
-        self.bubble_text = "%s \u2014 %s" % (name, desc)
-        self.bubble_until = now + EPOCH_BUBBLE_SECS
+        self._say("%s \u2014 %s" % (name, desc), EPOCH_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self._log("epoch", id=eid, name=name)
 
@@ -2068,8 +2142,8 @@ class PetEngine:
         genes = store.gene_manifest(cls)
         self._award_xp(XP_METAMORPH, "metamorph")
         self.mood = "happy"
-        self.bubble_text = store.chrono_readout(cls, profile)
-        self.bubble_until = now + CHRONO_BUBBLE_SECS
+        self._say(store.chrono_readout(cls, profile), CHRONO_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
         self._log("metamorph", to=cls, species=genes["species"], genes=genes)
@@ -2085,8 +2159,8 @@ class PetEngine:
         if cls != prev and cls != "larval":
             self.chrono_type = cls
             self._save_chrono()
-            self.bubble_text = "My genes are drifting\u2026"
-            self.bubble_until = now + CHRONO_BUBBLE_SECS
+            self._say("My genes are drifting\u2026", CHRONO_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE, now=now)
             self.attention_until = now + FOCUS_ATTENTION_SECS
             self._log("drift", to=cls, fromType=prev)
         else:
@@ -2180,9 +2254,9 @@ class PetEngine:
         if h["state"] == "storm" and errors > 0 \
                 and now - self._last_static_bubble >= STATIC_BUBBLE_SECS:
             self._last_static_bubble = now
-            self.bubble_text = store.EMBODY_LABELS["storm_error"]
-            self.bubble_until = now + FOCUS_BUBBLE_SECS
-            self._log("static", errors=errors)
+            if self._say(store.EMBODY_LABELS["storm_error"], FOCUS_BUBBLE_SECS,
+                         pri=self.BUBBLE_PRI_MILESTONE, now=now):
+                self._log("static", errors=errors)
 
     def _embody_glow(self):
         """Soft radial aura for the embodied day state, alpha scaled by
@@ -2267,8 +2341,8 @@ class PetEngine:
                 self._save_ritual_state()
                 self._award_xp(XP_RITUAL, "ritual")
                 self.mood = "happy"
-                self.bubble_text = "Ritual complete: %s" % r["name"]
-                self.bubble_until = now + RITUAL_BUBBLE_SECS
+                self._say("Ritual complete: %s" % r["name"], RITUAL_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self.attention_until = now + FOCUS_ATTENTION_SECS
                 self._log("ritual", id=r["id"], name=r["name"])
                 break
@@ -2283,8 +2357,8 @@ class PetEngine:
             self._dayclose_date = today
             self.cfg["ritualCloseDate"] = today
             self._save_ritual_state()
-            self.bubble_text = "Tomorrow's a new day"
-            self.bubble_until = now + RITUAL_BUBBLE_SECS
+            self._say("Tomorrow's a new day", RITUAL_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE, now=now)
             self._log("dayclose",
                       pending=sum(1 for r in self._rituals if not r.get("done")))
 
@@ -2295,6 +2369,7 @@ class PetEngine:
             c["barterBank"] = self._barter_bank
             c["barterStage"] = self._barter_stage
             c["barterOfferDate"] = self._barter_offer_date
+            c["barterOfferSince"] = str(self.cfg.get("barterOfferSince", "") or "")
             store.save_config(c)
         except Exception:
             pass
@@ -2313,11 +2388,14 @@ class PetEngine:
         self._barter_bank -= offer["costMinutes"]
         self._barter_stage = offer["stage"]
         self._barter_offer_date = ""
+        # the offer clock ends with the offer: a stale Since would make the
+        # NEXT fresh offer instant-expire on its first tick
+        self.cfg["barterOfferSince"] = ""
         self._save_barter()
         self._award_xp(XP_BARTER, "barter")
         self.mood = "happy"
-        self.bubble_text = "Shift complete: %s \u2728" % offer["name"]
-        self.bubble_until = now + BARTER_BUBBLE_SECS
+        self._say("Shift complete: %s \u2728" % offer["name"], BARTER_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
         self.cast = {"until": now + FOCUS_CAST_SECS, "started": now}
         self._log("barter", stage=offer["stage"], cost=offer["costMinutes"],
@@ -2340,25 +2418,34 @@ class PetEngine:
         if offer:
             today = time.strftime("%Y-%m-%d")
             od = self._barter_offer_date
+            # the offer clock runs from when the offer was FIRST made
+            # (barterOfferSince); re-asking on later days must not reset it,
+            # or the quiet expiry below could never trigger
+            since = str(self.cfg.get("barterOfferSince") or od or "")
             days = 0
-            if od:
+            if since:
                 try:
                     days = (datetime.date.today()
-                            - datetime.date.fromisoformat(od)).days
+                            - datetime.date.fromisoformat(since)).days
                 except (TypeError, ValueError):
                     days = store.BARTER_EXPIRE_DAYS
-            if od and od != today and days >= store.BARTER_EXPIRE_DAYS:
-                # the offer window closed quietly â€” bank kept, no punishment.
-                # Marking today suppresses the re-ask until tomorrow.
+            if od and days >= store.BARTER_EXPIRE_DAYS:
+                # the offer window closed quietly — bank kept, no punishment.
+                # Suppress until tomorrow, then a fresh offer (and fresh clock)
+                # may start.
                 self._barter_offer_date = today
+                self.cfg["barterOfferSince"] = ""
                 self._save_barter()
             elif od != today and self._barter_bank >= offer["costMinutes"]:
                 # ask (or re-offer after a quiet expiry): once per day
+                if not self.cfg.get("barterOfferSince"):
+                    self.cfg["barterOfferSince"] = today
                 self._barter_offer_date = today
                 self._save_barter()
-                self.bubble_text = ("I can shift form \u2014 trade %d "
-                                    "focus-minutes?" % offer["costMinutes"])
-                self.bubble_until = now + BARTER_BUBBLE_SECS
+                self._say("I can shift form \u2014 trade %d focus-minutes?"
+                          % offer["costMinutes"],
+                          BARTER_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE,
+                          now=now)
                 self._log("barterAsk", stage=offer["stage"],
                           cost=offer["costMinutes"])
         # visual tier: periodic cast shimmer once a form stage is earned
@@ -2455,9 +2542,10 @@ class PetEngine:
             if st in ("seed", "growing") and float(t.get("invested") or 0) >= est:
                 t["status"] = "ripe"
                 t["updated"] = now
-                self.bubble_text = "Task ripe: %s \u2014 harvest when ready" % (
-                    t.get("title") or "")
-                self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+                self._say("Task ripe: %s \u2014 harvest when ready" % (
+                    t.get("title") or ""),
+                    ORCHARD_RIPE_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE,
+                    now=now)
                 self._log("orchard", event="ripe", id=t.get("id"),
                           title=t.get("title"), soil=t.get("soil"))
                 self._chime("complete")
@@ -2499,9 +2587,10 @@ class PetEngine:
             refund = max(1, int(t.get("estMin") or 0) // 5)
             self._barter_bank = getattr(self, "_barter_bank", 0) + refund
             self._save_barter()
-            self.bubble_text = "Pruned %s \u2014 %d min back to the bank" % (
-                t.get("title") or "", refund)
-            self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+            self._say("Pruned %s \u2014 %d min back to the bank" % (
+                t.get("title") or "", refund),
+                ORCHARD_RIPE_BUBBLE_SECS, pri=self.BUBBLE_PRI_MILESTONE,
+                now=now)
             self._log("orchard", event="prune", id=t.get("id"),
                       title=t.get("title"), refund=refund)
 
@@ -2544,16 +2633,18 @@ class PetEngine:
         """Apply deferred harvest outcomes AFTER tasks.json was persisted."""
         for p in self._pending_harvest:
             if p["wither"]:
-                self.bubble_text = "%s withered \u2014 the gamble ran long" % p["title"]
-                self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+                self._say("%s withered \u2014 the gamble ran long" % p["title"],
+                          ORCHARD_RIPE_BUBBLE_SECS,
+                          pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self._log("orchard", event="wither", id=p["id"],
                           title=p["title"], soil=p["soil"])
                 continue
             xp = XP_ORCHARD * (2 if p["gambled"] else 1)
             self._award_xp(xp, "harvest")
             self.mood = "happy"
-            self.bubble_text = "Harvested %s! +%d XP \u2728" % (p["title"], xp)
-            self.bubble_until = now + ORCHARD_RIPE_BUBBLE_SECS
+            self._say("Harvested %s! +%d XP \u2728" % (p["title"], xp),
+                      ORCHARD_RIPE_BUBBLE_SECS,
+                      pri=self.BUBBLE_PRI_MILESTONE, now=now)
             self.attention_until = now + FOCUS_ATTENTION_SECS
             self._log("harvest", id=p["id"], title=p["title"], soil=p["soil"],
                       xp=xp, gambled=p["gambled"], invested=p["invested"])
@@ -2572,12 +2663,14 @@ class PetEngine:
             return
         if now < getattr(self, "attention_until", 0.0):
             return
+        if self.bubble_text and now < self.bubble_until:
+            return  # never stomp a live bubble; retry on a later quiet tick
         line = store.orchard_haiku(cur.get("tasks") or [])
         if not line:
             return
         cur["haikuDate"] = today
-        self.bubble_text = line
-        self.bubble_until = now + RITUAL_BUBBLE_SECS
+        self._say(line, RITUAL_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("haiku", line=line)
 
     def _orchard_waggle(self, now):
@@ -2592,9 +2685,9 @@ class PetEngine:
         if not nxt:
             return
         self._last_waggle = now
-        self.bubble_text = "Dancing toward: %s (%s)" % (
-            nxt.get("title") or "", nxt.get("soil") or "")
-        self.bubble_until = now + APP_BUBBLE_SECS
+        self._say("Dancing toward: %s (%s)" % (
+            nxt.get("title") or "", nxt.get("soil") or ""),
+            APP_BUBBLE_SECS, pri=self.BUBBLE_PRI_AMBIENT, now=now)
         self._log("waggle", id=nxt.get("id"), title=nxt.get("title"))
 
     def _orchard_next(self, now):
@@ -2686,8 +2779,8 @@ class PetEngine:
             store.save_config(c)
         except Exception:
             pass
-        self.bubble_text = line
-        self.bubble_until = now + ALERT_BUBBLE_SECS
+        self._say(line, ALERT_BUBBLE_SECS,
+                  pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("alert", alert=kind, line=line)
 
     def _barter_glow(self):

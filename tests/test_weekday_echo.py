@@ -48,7 +48,7 @@ class TestEchoTick:
         eng = _engine(pet_dir, no_window, monkeypatch)
         eng.os_active = True
         key = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
-        eng._hour_history = {key: {str(time.localtime().tm_hour): 1800}}
+        eng._hour_history = {key: {time.localtime().tm_hour: 1800}}
         eng._app_history = {key: {"Terminal": 1200, "Brave": 600}}
         eng._echo_at = 0
         return eng
@@ -69,7 +69,7 @@ class TestEchoTick:
     def test_silent_below_min_seconds(self, pet_dir, no_window, monkeypatch):
         eng = self._echo_engine(pet_dir, no_window, monkeypatch)
         key = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
-        eng._hour_history = {key: {str(time.localtime().tm_hour): 60}}
+        eng._hour_history = {key: {time.localtime().tm_hour: 60}}
         eng._echo_tick(1000.0)
         assert eng.bubble_text == ""
 

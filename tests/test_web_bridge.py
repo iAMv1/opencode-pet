@@ -383,7 +383,7 @@ def test_unknown_method_400(fresh_server):
         assert e.code == 400
 
 
-def test_malformed_rpc_body_500(fresh_server):
+def test_malformed_rpc_body_400(fresh_server):
     import urllib.request
     req = urllib.request.Request(fresh_server[0] + "/rpc", data=b"not json",
                                  headers={"Content-Type": "application/json"})
@@ -391,7 +391,8 @@ def test_malformed_rpc_body_500(fresh_server):
         with urllib.request.urlopen(req, timeout=15):
             pytest.fail("malformed body should error")
     except urllib.error.HTTPError as e:
-        assert e.code == 500
+        # malformed JSON is a CLIENT error (400), not a server fault (500)
+        assert e.code == 400
 
 
 def test_rpc_rejects_non_json_content_type(fresh_server):

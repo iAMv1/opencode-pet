@@ -275,13 +275,27 @@ class TestAgentMirror:
         eng.update_sessions(make_sessions("busy"))
         eng.update_sessions(make_sessions("error"))
         assert "agentError" in kinds(pet_dir, eng)
-        # within the cooldown: the generic reaction still bubbles, no new log
+        concern = eng.bubble_text
+        # within the cooldown: the short empathy line is ALSO rate-limited
+        # (60s) so error/busy flapping can't bubble every transition — the
+        # previous bubble simply stays until it expires naturally
+        eng.update_sessions(make_sessions("busy"))
+        eng.update_sessions(make_sessions("error"))
+        assert eng.bubble_text == concern
+        assert len([e for e in read_log(pet_dir, eng)
+                    if e.get("kind") == "agentError"]) == 1
+        # past the empathy cooldown but inside the concern cooldown: the
+        # generic reaction bubbles (once), still no new agentError log.
+        # (expire the concern's own 5s window first — a reactive line never
+        # buries a live milestone bubble)
+        eng._last_error_reaction = time.time() - engine_mod.ERROR_REACTION_COOLDOWN_SECS - 1
+        eng.bubble_until = 0
         eng.update_sessions(make_sessions("busy"))
         eng.update_sessions(make_sessions("error"))
         assert eng.bubble_text in engine_mod.PetEngine.REACTIONS["error"]
         assert len([e for e in read_log(pet_dir, eng)
                     if e.get("kind") == "agentError"]) == 1
-        # past the cooldown: concern line again
+        # past the concern cooldown: concern line again
         eng._last_agent_error = time.time() - engine_mod.AGENT_ERROR_COOLDOWN_SECS - 1
         eng.update_sessions(make_sessions("busy"))
         eng.update_sessions(make_sessions("error"))

@@ -13,7 +13,11 @@ from ctypes import wintypes
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
-kernel32 = ctypes.windll.kernel32
+# use_last_error=True makes ctypes save/restore the thread's Windows error
+# code around EVERY call through this dll, so ctypes.get_last_error() right
+# after CreateMutexW (single-instance guard) is trustworthy — the plain
+# windll form let internal ctypes calls clobber it intermittently.
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 # GDI / window constants
 WS_POPUP = 0x80000000

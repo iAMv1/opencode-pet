@@ -368,22 +368,21 @@ class ControlApi:
     def set_focus_tag(self, tag=""):
         """Tag the CURRENT focus session (Work/Study/Write/...). Applies until
         the session ends; a new session starts untagged. Type-validated: only
-        strings are accepted (P10), stripped and capped at 32 chars."""
+        strings are accepted (P10), stripped and capped at 32 chars. Writes
+        ONLY the tag field through a locked read-modify-write, so it can never
+        clobber the session fields the pet process writes concurrently."""
         if not isinstance(tag, str):
             return False
         tag = tag.strip()[:32]
         self.tag = tag
-        try:
-            with open(store.FOCUS_FILE, encoding="utf-8") as fh:
-                d = json.load(fh)
-            if not (isinstance(d, dict) and d.get("active")):
-                return False
+
+        def mut(d):
+            if not d.get("active"):
+                return None
             d["tag"] = tag
-            with open(store.FOCUS_FILE, "w", encoding="utf-8") as fh:
-                json.dump(d, fh)
-            return True
-        except Exception:
-            return False
+            return d
+
+        return store.update_focus(mut)
 
     def start_focus(self, minutes=None):
         """Write the one-shot command; the pet process owns the session."""
@@ -853,24 +852,25 @@ class ControlApi:
 
     def save_config(self, conf):
         c = store.load_config()
-        c.update(_sanitize_config(conf))  # merge â€” never drop petVisible or pending commands
-        store.save_config(c)
-        return True
+        c.update(_sanitize_config(conf))  # merge — never drop petVisible or pending commands
+        return bool(store.save_config(c))
 
     def _cmd(self, key, val=1):
         """Write a one-shot command, merging under the cross-process lock so a
-        concurrent settings save from the pet process can't be clobbered."""
+        concurrent settings save from the pet process can't be clobbered.
+        Returns True only when the command actually landed on disk."""
         try:
             with store._config_lock() as fd:
                 if fd is None:
-                    return
-                c = store._read_locked_fd(fd)
+                    return False
+                c = store._read_locked_fd(fd, store.CONFIG_FILE)
                 if not isinstance(c, dict):
                     c = {}
                 c[key] = val
-                store._write_locked_fd(fd, c)
+                store._write_locked_fd(fd, store.CONFIG_FILE, c)
+                return True
         except Exception:
-            pass
+            return False
 
     def hide_pet(self):
         self._cmd("hidePet")

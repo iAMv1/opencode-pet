@@ -178,10 +178,26 @@ def run_web(host="127.0.0.1", port=0, pet_dir=None, extra_tail=None):
                 return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
-                if length > WEB_MAX_BODY:
-                    self._json(413, {"ok": False, "error": "body too large"})
-                    return
+            except ValueError:
+                self._json(400, {"ok": False, "error": "bad Content-Length"})
+                return
+            if length < 0:
+                # a negative length would make rfile.read() drain until EOF,
+                # hanging this worker thread (trivial local DoS)
+                self._json(400, {"ok": False, "error": "bad Content-Length"})
+                return
+            if length > WEB_MAX_BODY:
+                self._json(413, {"ok": False, "error": "body too large"})
+                return
+            try:
                 req = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except (ValueError, OSError):
+                self._json(400, {"ok": False, "error": "bad request body"})
+                return
+            if not isinstance(req, dict):
+                self._json(400, {"ok": False, "error": "bad request body"})
+                return
+            try:
                 method = req.get("method")
                 args = req.get("args") or []
                 if method not in api._WEB_METHODS:

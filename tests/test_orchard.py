@@ -287,7 +287,10 @@ class TestGrowth:
         _prime(eng, now, now - 30)
         assert read_tasks(pet_dir)["tasks"][0]["invested"] == 0
 
-    def test_ripe_at_threshold_bubbles_and_logs(self, pet_dir, no_window):
+    def test_ripe_at_threshold_bubbles_and_logs(self, pet_dir, no_window, monkeypatch):
+        # Pin the hour below ORCHARD_HAIKU_HOUR so the day-close haiku can
+        # never race the ripe bubble regardless of when the suite runs.
+        _fake_localtime(monkeypatch, datetime.datetime(2026, 1, 1, 12, 0, 0))
         eng = _eng(pet_dir, no_window)
         store_mod.write_tasks({"tasks": [_task(estMin=1)]})
         eng.os_active = True

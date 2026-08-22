@@ -16,6 +16,7 @@ build. This module is the package front door: it re-exports everything the
 rest of the app (and the test suite) imports from `desktop.main`.
 """
 
+import ctypes
 import os
 import sys
 import threading
@@ -97,7 +98,7 @@ def main():
         return
 
     mutex = kernel32.CreateMutexW(None, False, "OpenCodePet_SingleInstance")
-    if kernel32.GetLastError() == 183:
+    if ctypes.get_last_error() == 183:
         # Refuse to start ONLY when the owning instance's pet window is actually
         # alive. A leaked mutex handle held by a crashed/orphaned child (e.g. a
         # --control WebView2 subprocess) must not block a fresh launch.

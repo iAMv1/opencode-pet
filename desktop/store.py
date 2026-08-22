@@ -275,6 +275,22 @@ def activity_log_path(pet_id):
     return os.path.join(PET_DIR, "activity-%s.jsonl" % pet_id)
 
 
+_ACTIVITY_LOCK = threading.Lock()
+
+
+def append_activity(pet_id, event):
+    """Append one JSON line to the pet's activity log under the shared
+    activity lock, so a concurrent prune's rewrite can never drop events
+    appended between its read and its write."""
+    try:
+        with _ACTIVITY_LOCK:
+            with open(activity_log_path(pet_id), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(event) + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def prune_activity_log(pet_id, config=None):
     """Cap a pet's activity log: size > ACTIVITY_MAX_BYTES, or events older
     than ACTIVITY_PRUNE_DAYS. Rewrites once per day (config pruneDate guard),
@@ -309,19 +325,25 @@ def prune_activity_log(pet_id, config=None):
         if not (isinstance(oldest, (int, float)) and oldest < cutoff):
             return False
     try:
-        with open(path, encoding="utf-8") as fh:
-            lines = fh.readlines()
-        kept = []
-        for line in lines[-ACTIVITY_PRUNE_LINES:]:
-            try:
-                e = json.loads(line)
-                if isinstance(e.get("t"), (int, float)) and e["t"] < cutoff:
+        # The lock pairs with append_activity: no line can land between the
+        # read and the rewrite, and the tmp+os.replace swap means readers
+        # outside the lock see either the whole old or whole new log.
+        with _ACTIVITY_LOCK:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.readlines()
+            kept = []
+            for line in lines[-ACTIVITY_PRUNE_LINES:]:
+                try:
+                    e = json.loads(line)
+                    if isinstance(e.get("t"), (int, float)) and e["t"] < cutoff:
+                        continue
+                except Exception:
                     continue
-            except Exception:
-                continue
-            kept.append(line)
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.writelines(kept)
+                kept.append(line)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.writelines(kept)
+            os.replace(tmp, path)
     except OSError:
         return False
     save_config({ACTIVITY_PRUNE_KEY: today})
@@ -440,35 +462,139 @@ def _config_lock(path=None):
         _file_thread_lock(path).release()
 
 
-def _read_locked_fd(fd):
+def _quarantine(path, raw):
+    """Preserve the corrupt bytes of a data file next to it, so a bad write
+    can be diagnosed instead of silently overwritten by the next save."""
+    if not path or not raw or not raw.strip():
+        return
+    try:
+        with open(path + ".corrupt", "wb") as qf:
+            qf.write(raw)
+    except OSError:
+        pass
+
+
+def _snapshot_bak(path, raw):
+    """Best-effort copy of the last good bytes before an in-place rewrite.
+
+    Locked files cannot be swapped atomically (the swap would race the very
+    byte-range lock that serializes them), so crash safety comes from this
+    snapshot: a crash mid-write leaves the main file truncated but <path>.bak
+    intact, and _read_locked_fd restores from it on the next boot.
+
+    Only PARSEABLE bytes may replace an existing .bak: snapshotting torn
+    bytes would destroy the last good generation. A failed snapshot never
+    blocks the rewrite itself."""
+    if not path or not raw or not raw.strip():
+        return
+    try:
+        json.loads(raw.decode("utf-8"))
+    except Exception:
+        return  # current bytes are corrupt — keep the previous .bak
+    try:
+        with open(path + ".bak", "wb") as bf:
+            bf.write(raw)
+            bf.flush()
+            os.fsync(bf.fileno())
+    except OSError:
+        pass
+
+
+def _read_bak(path):
+    if not path:
+        return None
+    try:
+        with open(path + ".bak", "rb") as bf:
+            return json.loads(bf.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def _read_locked_fd(fd, path=None):
     """Read config through the lock-holding fd.
 
     Windows byte-range locks block READS of the locked region from any OTHER
     handle (ERROR_LOCK_VIOLATION — unlike POSIX advisory locks), so a plain
     open() inside the lock fails and the merge silently sees an empty file.
     Seeking and reading the lock-owning handle is the only correct path.
+
+    On unparseable content the raw bytes are quarantined as <path>.corrupt
+    and the last good snapshot (<path>.bak, written by _write_locked_fd) is
+    returned instead of a silent reset to {}. A genuinely fresh (empty) file
+    still yields {} untouched.
     """
     os.lseek(fd, 0, os.SEEK_SET)
+    raw = b""
     try:
         raw = os.read(fd, 1 << 20)
         return json.loads(raw.decode("utf-8"))
     except Exception:
+        if raw.strip():
+            _quarantine(path, raw)
+            bak = _read_bak(path)
+            if isinstance(bak, dict):
+                return bak
         return {}
 
 
-def _write_locked_fd(fd, data):
+def _write_locked_fd(fd, path, data):
     """Write `data` through a lock-held fd. Windows refuses writes into a
-    byte-range-locked region from a DIFFERENT handle (ERROR_LOCK_VIOLATION), so
-    a separate open() in "w" mode would silently fail and leave the file
+    byte-range-locked region from a DIFFERENT handle (ERROR_LOCK_VIOLATION),
+    so a separate open() in "w" mode would silently fail and leave the file
     truncated. Seeking/truncating/writing the lock-holding fd is the only
-    correct path."""
+    correct path.
+
+    Before destroying anything, the previous bytes are snapshotted to
+    <path>.bak so a crash between ftruncate and the completed write is
+    recoverable (see _read_locked_fd) instead of silently wiping the file.
+    """
+    payload = json.dumps(data).encode("utf-8")
+    os.lseek(fd, 0, os.SEEK_SET)
+    _snapshot_bak(path, os.read(fd, 1 << 20))
     os.lseek(fd, 0, os.SEEK_SET)
     os.ftruncate(fd, 0)
-    payload = json.dumps(data).encode("utf-8")
     while payload:
         n = os.write(fd, payload)
         payload = payload[n:]
     os.fsync(fd)
+
+
+def atomic_write_json(path, data):
+    """Crash-safe write for UNLOCKED JSON files (wellbeing/focus): serialize
+    to a temp sibling, fsync, then swap in atomically with os.replace, keeping
+    a <path>.bak of the previous good bytes. Readers therefore see either the
+    complete old or the complete new file — never a truncation window. The
+    swap is retried briefly (a concurrent reader can briefly block the rename
+    on Windows); a plain in-place rewrite is the last resort."""
+    payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    try:
+        with open(path, "rb") as rf:
+            _snapshot_bak(path, rf.read())
+    except OSError:
+        pass
+    tmp = "%s.tmp-%d" % (path, os.getpid())
+    for _ in range(3):
+        try:
+            with open(tmp, "wb") as tf:
+                tf.write(payload)
+                tf.flush()
+                os.fsync(tf.fileno())
+            os.replace(tmp, path)
+            return True
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            time.sleep(0.01)
+    try:
+        with open(path, "wb") as wf:
+            wf.write(payload)
+            wf.flush()
+            os.fsync(wf.fileno())
+        return True
+    except OSError:
+        return False
 
 
 def save_config(conf):
@@ -480,17 +606,24 @@ def save_config(conf):
     process's keys, so the whole read-merge-write happens under a
     cross-process file lock (see _config_lock) and writes go through the
     lock-holding handle.
+
+    Returns True when the merged config actually landed on disk, False when
+    the lock was contended past the retry budget or the write failed — a
+    False must never be reported to the user as success.
     """
     try:
         with _config_lock() as fd:
             if fd is None:
-                return
-            existing = _read_locked_fd(fd)
+                # lock contended past the retry budget: the save did NOT
+                # happen. Callers surface this instead of reporting success.
+                return False
+            existing = _read_locked_fd(fd, CONFIG_FILE)
             merged = dict(existing) if isinstance(existing, dict) else {}
             merged.update(conf)
-            _write_locked_fd(fd, merged)
+            _write_locked_fd(fd, CONFIG_FILE, merged)
+            return True
     except Exception:
-        pass
+        return False
 
 
 # ---------------------------------------------------------------- status
@@ -531,21 +664,52 @@ def current_app_session():
 
 
 # ---------------------------------------------------------------- wellbeing
+def update_focus(fn):
+    """Locked read-modify-write of focus.json.
+
+    The pet process (session lifecycle) and the control process (tagging)
+    both write this file from different processes; bare read-modify-write
+    loses fields when writes interleave. fn(current) returns the new dict,
+    or None to skip the write."""
+    try:
+        with _config_lock(FOCUS_FILE) as fd:
+            if fd is None:
+                return False
+            current = _read_locked_fd(fd, FOCUS_FILE)
+            if not isinstance(current, dict):
+                current = {}
+            updated = fn(current)
+            if not isinstance(updated, dict):
+                return False
+            _write_locked_fd(fd, FOCUS_FILE, updated)
+            return True
+    except Exception:
+        return False
+
+
 def read_wellbeing():
-    """Load wellbeing.json, retrying on transient OSError (the pet rewrites
-    it non-atomically every WELLBEING_SAVE_INTERVAL s). None when unreadable.
+    """Load wellbeing.json, retrying on transient failures (the pet rewrites
+    it atomically every WELLBEING_SAVE_INTERVAL s). None when unreadable.
+
+    On total failure the last-good snapshot (.bak, kept by atomic_write_json)
+    is restored before giving up with None, so one bad write can never wipe
+    30 days of history.
 
     The one shared read path for the pet engine and every dashboard API, so
     the retry policy and corrupt-file handling live in exactly one place.
     """
+    last_err = None
     for _ in range(WELLBEING_READ_RETRIES):
         try:
             with open(WELLBEING_FILE, encoding="utf-8") as fh:
                 return json.load(fh)
-        except OSError:
+        except Exception as e:
+            last_err = e
             time.sleep(WELLBEING_READ_RETRY_SLEEP)
-        except Exception:
-            return None
+    snap = _read_bak(WELLBEING_FILE)
+    if isinstance(snap, dict):
+        return snap
+    print("wellbeing.json unreadable:", repr(last_err))
     return None
 
 
@@ -1400,11 +1564,12 @@ def read_tasks():
     """
     for _ in range(CONFIG_READ_RETRIES):
         try:
-            with _config_lock(_task_file()) as fd:
+            tpath = _task_file()
+            with _config_lock(tpath) as fd:
                 if fd is None:
                     time.sleep(CONFIG_READ_RETRY_SLEEP)
                     continue
-                d = _read_locked_fd(fd)
+                d = _read_locked_fd(fd, tpath)
                 if isinstance(d, dict):
                     out = _default_tasks()
                     out.update(d)
@@ -1428,10 +1593,11 @@ def update_tasks(fn):
     statuses.
     """
     try:
-        with _config_lock(_task_file()) as fd:
+        tpath = _task_file()
+        with _config_lock(tpath) as fd:
             if fd is None:
                 return False
-            current = _read_locked_fd(fd)
+            current = _read_locked_fd(fd, tpath)
             if not isinstance(current, dict) or not current:
                 # empty/corrupt file: start from the default garden (the lock
                 # may have just O_CREAT'd an empty file)
@@ -1439,7 +1605,7 @@ def update_tasks(fn):
             updated = fn(current)
             if updated is None or not isinstance(updated, dict):
                 return False
-            _write_locked_fd(fd, updated)
+            _write_locked_fd(fd, tpath, updated)
             return True
     except Exception:
         return False
