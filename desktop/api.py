@@ -97,6 +97,20 @@ def _pet_idx(cfg):
         return 0
 
 
+def _iter_activity_log(pet_id):
+    """Yield parsed event dicts from the pet's activity log; corrupt lines are
+    skipped so one torn write can't take down every dashboard card."""
+    try:
+        with open(store.activity_log_path(pet_id), encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    yield json.loads(line)
+                except Exception:
+                    continue
+    except OSError:
+        return
+
+
 def _current_app_session():
     """Resolve current_app_session through the desktop.main namespace: the
     test suite monkeypatches main.current_app_session, so the lookup must
@@ -267,19 +281,13 @@ class ControlApi:
         starts = done = 0
         try:
             pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
-            with open(store.activity_log_path(pet_id),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if time.time() - (e.get("t") or 0) >= store.WEEK_SECS:
-                        continue
-                    if e.get("kind") == "focusStart":
-                        starts += 1
-                    elif e.get("kind") == "focusDone":
-                        done += 1
+            for e in _iter_activity_log(pet_id):
+                if time.time() - (e.get("t") or 0) >= store.WEEK_SECS:
+                    continue
+                if e.get("kind") == "focusStart":
+                    starts += 1
+                elif e.get("kind") == "focusDone":
+                    done += 1
         except Exception:
             pass
         voice = store.voice_insights(
@@ -460,13 +468,7 @@ class ControlApi:
         events = []
         try:
             pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
-            with open(store.activity_log_path(pet_id),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        events.append(json.loads(line))
-                    except Exception:
-                        continue
+            events.extend(_iter_activity_log(pet_id))
         except Exception:
             pass
         return store.build_lane(d if isinstance(d, dict) else None, events)
@@ -480,21 +482,15 @@ class ControlApi:
         try:
             pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
             today = time.strftime("%Y-%m-%d")
-            with open(store.activity_log_path(pet_id),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if e.get("kind") != "alert":
-                        continue
-                    entry = {"alert": e.get("alert", ""),
-                             "line": e.get("line", ""), "t": e.get("t", 0)}
-                    if not out["today"] and time.strftime(
-                            "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
-                        out["today"] = entry["line"]
-                    out["last"].append(entry)
+            for e in _iter_activity_log(pet_id):
+                if e.get("kind") != "alert":
+                    continue
+                entry = {"alert": e.get("alert", ""),
+                         "line": e.get("line", ""), "t": e.get("t", 0)}
+                if not out["today"] and time.strftime(
+                        "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
+                    out["today"] = entry["line"]
+                out["last"].append(entry)
             out["last"] = out["last"][-_safe_int(limit, 3):]
         except Exception:
             pass
@@ -530,22 +526,17 @@ class ControlApi:
         embody log); 0 when the engine hasn't logged one yet.
         """
         d = store.read_wellbeing()
-        pet_id = sprites.PETS[_pet_idx(store.load_config())]["id"]
-        log_path = store.activity_log_path(pet_id)
+        cfg = store.load_config()
+        pet_id = sprites.PETS[_pet_idx(cfg)]["id"]
         today = time.strftime("%Y-%m-%d")
         errors = 0
         since = 0.0
         try:
-            with open(log_path, encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if e.get("kind") == "state" and e.get("state") in ("error", "retry") \
-                            and time.strftime("%Y-%m-%d",
-                                              time.localtime(e.get("t", 0))) == today:
-                        errors += 1
+            for e in _iter_activity_log(pet_id):
+                if e.get("kind") == "state" and e.get("state") in ("error", "retry") \
+                        and time.strftime("%Y-%m-%d",
+                                          time.localtime(e.get("t", 0))) == today:
+                    errors += 1
         except Exception:
             pass
         focus = {}
@@ -560,17 +551,12 @@ class ControlApi:
             pass
         h = store.day_health(d if isinstance(d, dict) else {},
                              errors=errors, focus=focus or None,
-                             goal_min=store.goal_minutes(store.load_config()))
+                             goal_min=store.goal_minutes(cfg))
         # wall-clock start of the current state (append-ordered embody log)
         try:
-            with open(log_path, encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if e.get("kind") == "embody" and e.get("state") == h["state"]:
-                        since = float(e.get("t", 0) or 0)
+            for e in _iter_activity_log(pet_id):
+                if e.get("kind") == "embody" and e.get("state") == h["state"]:
+                    since = float(e.get("t", 0) or 0)
         except Exception:
             pass
         return {"state": h["state"], "label": h["label"],
@@ -802,16 +788,10 @@ class ControlApi:
         # count focus sessions in the activity log this week
         try:
             pet_id = sprites.PETS[_pet_idx(c)]["id"]
-            with open(store.activity_log_path(pet_id),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if e.get("kind") == "focusDone" and \
-                            time.time() - (e.get("t") or 0) < store.WEEK_SECS:
-                        out["focusSessions"] += 1
+            for e in _iter_activity_log(pet_id):
+                if e.get("kind") == "focusDone" and \
+                        time.time() - (e.get("t") or 0) < store.WEEK_SECS:
+                    out["focusSessions"] += 1
         except Exception:
             pass
         return out

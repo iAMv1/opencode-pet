@@ -40,6 +40,10 @@ def create_tray(engine):
 
     def quit_(icon, item):
         icon.stop()
+        try:
+            engine.flush_state()
+        except Exception:
+            pass
         os._exit(0)
 
     menu = pystray.Menu(

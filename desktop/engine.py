@@ -514,16 +514,8 @@ class PetEngine:
         long = count % 4 == 0
         pomo_short = int(c.get("pomoShort", 5) or 5)
         pomo_long = int(c.get("pomoLong", 15) or 15)
-        self.cfg["pomoCount"] = count
-        self.cfg["pomoDate"] = today
-        self.cfg["pomoShort"] = pomo_short
-        self.cfg["pomoLong"] = pomo_long
-        try:
-            c["pomoCount"] = count
-            c["pomoDate"] = today
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(pomoCount=count, pomoDate=today,
+                           pomoShort=pomo_short, pomoLong=pomo_long)
         now = time.time()
         self._say("Pomodoro %d done! Take a %s break" % (
             count, "long" if long else "short"),
@@ -577,6 +569,19 @@ class PetEngine:
     def _xp_needed(level):
         return XP_BASE + (level - 1) * XP_STEP
 
+    def _persist_keys(self, **keys):
+        """The standard config-persist dance in one place: merge `keys` into
+        the freshest on-disk config and save (swallowing IO errors — a failed
+        save must never break the tick), then mirror into the live cfg so a
+        later engine save can't revert them."""
+        try:
+            c = store.load_config()
+            c.update(keys)
+            store.save_config(c)
+        except Exception:
+            pass
+        self.cfg.update(keys)
+
     def _award_xp(self, amount, reason):
         self.xp += amount
         leveled = False
@@ -593,15 +598,8 @@ class PetEngine:
         self._save_growth()
 
     def _save_growth(self):
-        try:
-            c = store.load_config()
-            c["xp"] = self.xp
-            c["level"] = self.level
-            c["mood"] = self.mood
-            c["focusMin"] = self.focus_target_min
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(xp=self.xp, level=self.level, mood=self.mood,
+                           focusMin=self.focus_target_min)
 
     def _mood_tick(self):
         """Recalculate mood from recent state when nothing else changed it."""
@@ -642,12 +640,7 @@ class PetEngine:
         now = time.time()
         self._award_xp(XP_GOAL_BONUS, "goal")
         self._last_goal_date = self._wb_date
-        try:
-            c = store.load_config()
-            c["lastGoalDate"] = self._wb_date
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(lastGoalDate=self._wb_date)
         self.mood = "happy"
         self._say("Daily goal met!", GOAL_BUBBLE_SECS,
                   pri=self.BUBBLE_PRI_MILESTONE, now=now)
@@ -949,12 +942,7 @@ class PetEngine:
             self.win.show()
         else:
             self.win.hide()
-        try:
-            c = store.load_config()
-            c["petVisible"] = bool(vis)
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(petVisible=bool(vis))
 
     def _raw_state(self):
         st = self.sessions[0] if self.sessions else None
@@ -1410,6 +1398,7 @@ class PetEngine:
                 self._clear_command("quit")
             except Exception:
                 pass
+            self.flush_state()
             os._exit(0)
         # Only the keys THIS pass actually changed get persisted. Writing the
         # whole in-memory cfg here clobbered fresher disk keys (xp/level/mood/
@@ -1504,6 +1493,19 @@ class PetEngine:
                 self._clear_command("barterPay")
         if touched:
             store.save_config(touched)
+
+    def flush_state(self):
+        """Persist everything in-memory before a hard exit: os._exit skips
+        atexit/finally blocks, so without this up to WELLBEING_SAVE_INTERVAL
+        seconds of today's tracking (and any live focus progress) is lost."""
+        try:
+            self._save_wellbeing()
+        except Exception:
+            pass
+        try:
+            self._save_focus_state()
+        except Exception:
+            pass
 
     @staticmethod
     def _clear_command(key):
@@ -1853,13 +1855,7 @@ class PetEngine:
         dream = store.build_dream(d) if isinstance(d, dict) else ""
         if not dream:
             return
-        self.cfg["wakeDate"] = today
-        try:
-            c = store.load_config()
-            c["wakeDate"] = today
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(wakeDate=today)
         self._say(dream, WAKE_BUBBLE_SECS,
                   pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self.attention_until = now + FOCUS_ATTENTION_SECS
@@ -1879,12 +1875,7 @@ class PetEngine:
             if idle_secs > store.SLEEP_GAP_SECS \
                     and now - self._last_idle_wake >= store.WAKE_COOLDOWN_SECS:
                 self._last_idle_wake = now
-                try:
-                    c = store.load_config()
-                    c["wakeIdleAt"] = now
-                    store.save_config(c)
-                except Exception:
-                    pass
+                self._persist_keys(wakeIdleAt=now)
                 self._say(random.choice(WAKE_LINES), WAKE_BUBBLE_SECS,
                           pri=self.BUBBLE_PRI_MILESTONE, now=now)
                 self._log("wake", idleSecs=int(idle_secs))
@@ -1937,21 +1928,25 @@ class PetEngine:
         self._log("echo", app=top, mins=int(secs // 60))
 
     # ------------------------------------------------------- episodic memory
-    def _read_memory_events(self, limit=200):
-        """Last N events from THIS pet's activity log (one pet, one memory)."""
+    def _log_events(self):
+        """Parsed activity-log events for THIS pet, oldest first; corrupt
+        lines skipped. The one read path shared by every log scanner."""
+        out = []
         try:
             with open(store.activity_log_path(self.pet["id"]),
                       encoding="utf-8") as fh:
-                lines = fh.readlines()
-            out = []
-            for line in lines[-limit:]:
-                try:
-                    out.append(json.loads(line))
-                except Exception:
-                    continue
-            return out
+                for line in fh:
+                    try:
+                        out.append(json.loads(line))
+                    except Exception:
+                        continue
         except Exception:
-            return []
+            pass
+        return out
+
+    def _read_memory_events(self, limit=200):
+        """Last N events from THIS pet's activity log (one pet, one memory)."""
+        return self._log_events()[-limit:]
 
     def _memory_line(self):
         """Pick one recall with REAL numbers from the activity log. Template
@@ -2025,15 +2020,7 @@ class PetEngine:
             return
         self._memory_work = 0.0
         self._next_memory_work = self.memory_min * 60 * random.uniform(0.75, 1.25)
-        try:
-            c2 = store.load_config()
-            c2["memoryCount"] = count + 1
-            c2["memoryDate"] = today
-            store.save_config(c2)
-        except Exception:
-            pass
-        self.cfg["memoryCount"] = count + 1
-        self.cfg["memoryDate"] = today
+        self._persist_keys(memoryCount=count + 1, memoryDate=today)
         self._say(line, MEMORY_BUBBLE_SECS,
                   pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("memory", template=tpl)
@@ -2049,18 +2036,7 @@ class PetEngine:
         if now - self._last_fc_read < 60:
             return self._focus_count_cache
         self._last_fc_read = now
-        n = 0
-        try:
-            with open(store.activity_log_path(self.pet["id"]),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        if json.loads(line).get("kind") == "focusDone":
-                            n += 1
-                    except Exception:
-                        continue
-        except Exception:
-            pass
+        n = sum(1 for e in self._log_events() if e.get("kind") == "focusDone")
         self._focus_count_cache = n
         return n
 
@@ -2075,13 +2051,7 @@ class PetEngine:
             return
         eid, name, desc = crossed[0]
         flags.append(eid)
-        self.cfg["epochFlags"] = flags
-        try:
-            c = store.load_config()
-            c["epochFlags"] = flags
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(epochFlags=flags)
         self._award_xp(XP_EPOCH, "epoch")
         self.mood = "happy"
         self._say("%s \u2014 %s" % (name, desc), EPOCH_BUBBLE_SECS,
@@ -2091,14 +2061,9 @@ class PetEngine:
 
     # ------------------------------------------------------- chronotype (P5)
     def _save_chrono(self):
-        try:
-            c = store.load_config()
-            c["chronoType"] = self.chrono_type
-            c["chronoDate"] = self.chrono_date
-            c["chronoWeekDate"] = self.chrono_week_date
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(chronoType=self.chrono_type,
+                           chronoDate=self.chrono_date,
+                           chronoWeekDate=self.chrono_week_date)
 
     def _chrono_review_due(self, today):
         if not self.chrono_week_date:
@@ -2166,6 +2131,27 @@ class PetEngine:
         else:
             self._save_chrono()  # review happened, nothing drifted
 
+    def _pet_aura(self, rgba, radius_frac=0.42, cy_frac=0.52):
+        """Shared radial-glow rasterizer behind the sprite for the chrono /
+        embodiment / barter auras. rgba=(r,g,b,alpha); alpha falls off
+        quadratically toward the rim. Returns None on failure."""
+        try:
+            w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
+            h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
+            img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            dr = ImageDraw.Draw(img)
+            cx, cy = w // 2, int(h * cy_frac)
+            r = max(6, int(min(w, h) * radius_frac))
+            for rr in range(r, 0, -2):
+                a = int(rgba[3] * (1 - rr / r) ** 2)
+                if a <= 0:
+                    continue
+                dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                           fill=(rgba[0], rgba[1], rgba[2], a))
+            return img
+        except Exception:
+            return None
+
     def _chrono_glow(self):
         """Radial aura behind the pet for the active chrono gene â€” visual
         overlay only, the sprite sheet never changes. Dormant outside the
@@ -2182,19 +2168,8 @@ class PetEngine:
             key = col
             glow = cache.get(key)
             if glow is None:
-                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
-                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
-                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-                dr = ImageDraw.Draw(glow)
-                cx, cy = w // 2, int(h * 0.52)
-                r = max(6, int(min(w, h) * 0.42))
-                for rr in range(r, 0, -2):
-                    a = int(col[3] * (1 - rr / r) ** 2)
-                    if a <= 0:
-                        continue
-                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
-                               fill=(col[0], col[1], col[2], a))
-                self._chrono_glow_cache[key] = glow
+                glow = self._pet_aura(col)
+                cache[key] = glow
             return glow
         except Exception:
             return None
@@ -2205,22 +2180,10 @@ class PetEngine:
         The engine logs one 'state' line per transition, so each line is one
         error cluster."""
         today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
-        n = 0
-        try:
-            with open(store.activity_log_path(self.pet["id"]),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
-                    if e.get("kind") == "state" and e.get("state") in ("error", "retry") \
-                            and time.strftime("%Y-%m-%d",
-                                              time.localtime(e.get("t", 0))) == today:
-                        n += 1
-        except Exception:
-            pass
-        return n
+        return sum(
+            1 for e in self._log_events()
+            if e.get("kind") == "state" and e.get("state") in ("error", "retry")
+            and time.strftime("%Y-%m-%d", time.localtime(e.get("t", 0))) == today)
 
     def _embody_tick(self, now, force=False):
         """Re-derive the embodied day state (every 30s, plus force on
@@ -2275,18 +2238,7 @@ class PetEngine:
                 self._embody_glow_cache = cache = {}
             glow = cache.get(col)
             if glow is None:
-                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
-                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
-                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-                dr = ImageDraw.Draw(glow)
-                cx, cy = w // 2, int(h * 0.52)
-                r = max(6, int(min(w, h) * 0.42))
-                for rr in range(r, 0, -2):
-                    aa = int(a * (1 - rr / r) ** 2)
-                    if aa <= 0:
-                        continue
-                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
-                               fill=(spec[0], spec[1], spec[2], aa))
+                glow = self._pet_aura(col)
                 cache[col] = glow
             return glow
         except Exception:
@@ -2303,15 +2255,11 @@ class PetEngine:
                 "appHistory": getattr(self, "_app_history", {}) or {}}
 
     def _save_ritual_state(self):
-        try:
-            c = store.load_config()
-            c["ritualDate"] = str(self.cfg.get("ritualDate", "") or "")
-            c["ritualList"] = self._rituals
-            c["ritualDone"] = sorted(self._ritual_done)
-            c["ritualCloseDate"] = self._dayclose_date
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(
+            ritualDate=str(self.cfg.get("ritualDate", "") or ""),
+            ritualList=self._rituals,
+            ritualDone=sorted(self._ritual_done),
+            ritualCloseDate=self._dayclose_date)
 
     def _ritual_tick(self, now):
         """Personal rituals: derive fresh each day (ritualDate guard, survives
@@ -2364,18 +2312,10 @@ class PetEngine:
 
     # ------------------------------------------------------- barter (P7)
     def _save_barter(self):
-        try:
-            c = store.load_config()
-            c["barterBank"] = self._barter_bank
-            c["barterStage"] = self._barter_stage
-            c["barterOfferDate"] = self._barter_offer_date
-            c["barterOfferSince"] = str(self.cfg.get("barterOfferSince", "") or "")
-            store.save_config(c)
-        except Exception:
-            pass
-        self.cfg["barterBank"] = self._barter_bank
-        self.cfg["barterStage"] = self._barter_stage
-        self.cfg["barterOfferDate"] = self._barter_offer_date
+        self._persist_keys(barterBank=self._barter_bank,
+                           barterStage=self._barter_stage,
+                           barterOfferDate=self._barter_offer_date,
+                           barterOfferSince=str(self.cfg.get("barterOfferSince", "") or ""))
 
     def _barter_pay(self):
         """Confirm the standing offer: deduct banked minutes, advance one form
@@ -2707,23 +2647,11 @@ class PetEngine:
         them. The engine logs one 'state' line per transition, so gaps are
         state segments â€” a low median is task-flitting."""
         today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
-        ts = []
-        try:
-            with open(store.activity_log_path(self.pet["id"]),
-                      encoding="utf-8") as fh:
-                for line in fh:
-                    try:
-                        e = json.loads(line)
-                    except Exception:
-                        continue
+        ts = sorted(float(e.get("t", 0) or 0) for e in self._log_events()
                     if e.get("kind") == "state" and time.strftime(
-                            "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today:
-                        ts.append(float(e.get("t", 0) or 0))
-        except Exception:
-            return None
+                        "%Y-%m-%d", time.localtime(e.get("t", 0) or 0)) == today)
         if len(ts) <= ALERT_FLAP_EVENTS:
             return None
-        ts.sort()
         gaps = [b - a for a, b in zip(ts, ts[1:])]
         if not gaps:
             return None
@@ -2772,13 +2700,7 @@ class PetEngine:
         if not line:
             return
         self._alert_date = today
-        self.cfg["alertDate"] = today
-        try:
-            c = store.load_config()
-            c["alertDate"] = today
-            store.save_config(c)
-        except Exception:
-            pass
+        self._persist_keys(alertDate=today)
         self._say(line, ALERT_BUBBLE_SECS,
                   pri=self.BUBBLE_PRI_MILESTONE, now=now)
         self._log("alert", alert=kind, line=line)
@@ -2801,19 +2723,9 @@ class PetEngine:
                 self._barter_glow_cache = cache = {}
             glow = cache.get(stage)
             if glow is None:
-                w = max(8, int(self.pet["frameW"] * self.pet["scale"]))
-                h = max(8, int(self.pet["frameH"] * self.pet["scale"]))
-                glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-                dr = ImageDraw.Draw(glow)
-                cx, cy = w // 2, int(h * 0.52)
                 a = min(255, 16 + stage * 24)
-                r = max(6, int(min(w, h) * (0.42 + 0.05 * stage)))
-                for rr in range(r, 0, -2):
-                    aa = int(a * (1 - rr / r) ** 2)
-                    if aa <= 0:
-                        continue
-                    dr.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
-                               fill=(255, 214, 140, aa))
+                glow = self._pet_aura((255, 214, 140, a),
+                                      radius_frac=0.42 + 0.05 * stage)
                 cache[stage] = glow
             return glow
         except Exception:

@@ -1886,7 +1886,6 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           <aside class="rail" aria-label="Week summary">
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">This week vs last</div>
-              <div id="wbCompare"></div>
             </div>
             <div class="rail-card">
               <div class="sec-label" style="margin:0 0 10px">Focus insights</div>
@@ -3238,9 +3237,13 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
           '</div>';
       }
 
+      var _cmpTodaySig = "";
       function renderCompanionToday(wb, g) {
         var el = document.getElementById("companionToday");
         if (!el) return;
+        var sig = JSON.stringify([wb || [], g || {}]);
+        if (sig === _cmpTodaySig && el.childElementCount) return;
+        _cmpTodaySig = sig;
         if (!wb || !wb.length) {
           el.innerHTML = '<div class="empty" style="padding:14px 8px"><p>Time accrues while you work.</p></div>';
           return;
@@ -3386,10 +3389,14 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         }).catch(function () {});
       }
 
+      var _wbListSig = "";
       function renderWellbeing(list) {
         var wrap = document.getElementById("wellbeing");
         var totalEl = document.getElementById("wbTotal");
         var totalVal = document.getElementById("wbTotalVal");
+        var sig = JSON.stringify(list || []);
+        if (sig === _wbListSig && wrap.childElementCount) return;
+        _wbListSig = sig;
         if (!list || !list.length) {
           wrap.innerHTML = '<div class="empty" style="padding:18px 12px"><p>App time starts accruing while you work \u2014 per-app, per day.</p></div>';
           totalEl.hidden = true;
@@ -4337,7 +4344,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     { m: /dora/i, move: "Air Cannon", g: "💨" },
     { m: /gardev/i, move: "Confusion", g: "✨" },
     { m: /girat/i, move: "Shadow Claw", g: "🌑" },
-    { m: /cat/i, move: "Scratch", g: "🐾" }
+    { m: /cat/i, move: "Scratch", g: "🐾" },
+    { m: /ember/i, move: "Ember Rush", g: "🔥" }
   ];
   function moveFor(pet) {
     for (var i = 0; i < TYPES.length; i++) {
