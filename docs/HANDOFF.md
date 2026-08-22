@@ -19,15 +19,23 @@ Data-loss chains, bubble clobber, dead echo/wilt/barter-expiry, stale-cfg rollba
 
 ## User directives (standing)
 - **LOC budget: 1–2k lines per e2e feature.**
-- Wants desktop-native UI eventually (dislikes HTML dashboards). Proposal pending user decision: PySide6/Qt vs WinUI vs TUI. Pet window already native GDI. Layered migration only; never trade working product for unfinished complexity.
+- **Unlock system REMOVED by user decision** (2026-08-23): epic/cleanup branches + remote develop deleted; evolution system stays.
+- Native UI verdict delivered (2026-08-23): HTML production-adequate for v0.6.x; PySide6 incremental panel migration optional in v0.7 — awaiting user greenlight.
 - Long-term architecture only; documented debt OK (DEBT-OK lists exist in audit outputs).
 
+## Asset ecosystem research (2026-08-23, web-search verified)
+The post-Grok desktop-pet buzz = Codex/Petdex pack format wave:
+- Petdex (crafter-station/petdex, ~3.9k stars, MIT): gallery + CLI + petdex.dev/api/manifest HTTP API. Pack = `pet.json` + `spritesheet.webp`, 8x9 grid of 192x208 cells (v2: 8x11), 9 state rows (idle/running-right/running-left/waving/jumping/failed/waiting/running/review).
+- OpenPets (openpets.dev, MIT): 1177 companions gallery + submit flow. Also: X-T-E-R/OpenPet (MCP control), AgentCat, agent-pet, OpenAnima (PySide6 — native-migration reference).
+- OUR ENGINE IS ALREADY COMPATIBLE: sprites.py PET_STATES = same 9-row petdex layout, 192x208 cells.
+- Licensing: runtime import by users = clean; bundling specific pets in the exe requires per-pet license check.
+- PROPOSED R4 FEATURE: Petdex-compatible pack loader (user folder + optional manifest fetch) within 1-2k LOC budget. Awaiting user go-ahead.
+
 ## Round 4 queue (remaining meaningful work)
-1. **LPC-cat sprite variety** (BUG-7/8): needs new sprite art rows. Pipeline exists (tools/sprite_forge.py + check_sprites.py). Could use free image chain (pollinations batch per playbook) or hand-drawn sheet. Verify with check_sprites.py + visual render.
-2. **Native-stack proposal doc**: one-pager comparing PySide6/Qt (reuse engine/store, ~2k LOC new shell) vs WinUI3 (full rewrite) vs TUI (@opentui/solid already in package.json). User picks before any build.
-3. **Release v0.6.2**: tag triggers exe workflow. Bundle R1-R3 fixes. Update README proof shots if UI changed (it didn't materially).
-4. **Threading completeness** (optional polish): render-loop reads still unsynchronized by design (GIL-atomic per attr) — acceptable; document as DEBT-OK rather than over-lock.
-5. Parked user decisions: epic/cleanup branches ("pet unlock system" revival = big merge + test repair), origin/develop deletion.
+1. **Petdex pack loader** (proposed, awaiting user go): import any pet.json+spritesheet.webp from user folder / petdex.dev manifest. Solves LPC-cat variety permanently.
+2. **Native-stack proposal doc**: PySide6 vs WinUI vs TUI one-pager — only if user greenlights migration direction.
+3. **Release v0.6.2**: tag triggers exe workflow. Bundle R1-R3 fixes.
+4. Parked: nothing (unlock branches deleted 2026-08-23).
 
 ## Session-end state
 All work committed+pushed through `3626e16`. Working tree clean except this HANDOFF edit. Next session: read this file, pick from Round 4 queue, continue loop until queue empty AND no reviewer/specialist can identify stronger alternative.
