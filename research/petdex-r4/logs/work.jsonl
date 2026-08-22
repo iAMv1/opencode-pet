@@ -1,0 +1,4 @@
+{"ts":"2026-08-23","source":"orchestrator","level":"info","event":"iter1-complete","detail":"3 parallel agents (spec/survey/refutation); 19 findings persisted; synthesis written; 1 escalation raised (bundled-sprite licensing)"}
+{"ts":"2026-08-23","source":"orchestrator","level":"decision","event":"stack-verdict","detail":"PySide6 incremental (OpenAnima path), control.html first; HTML adequate short-term; user greenlight pending"}
+{"ts":"2026-08-23","source":"orchestrator","level":"decision","event":"loader-spec-hardened","detail":"dimension-inference + alpha-scan + alias shim mandatory; refutation agents broke all three naive-parsing assumptions with live-pack artifacts"}
+{"ts":"2026-08-23","source":"orchestrator","level":"warn","event":"escalation-bundled-ip","detail":"exe bundles Pokemon/Doraemon/Gardevoir/Giratina fan art - worse exposure than loader question; options a/b/c in SYNTHESIS.md; gates release"}

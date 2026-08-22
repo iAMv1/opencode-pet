@@ -32,10 +32,11 @@ The post-Grok desktop-pet buzz = Codex/Petdex pack format wave:
 - PROPOSED R4 FEATURE: Petdex-compatible pack loader (user folder + optional manifest fetch) within 1-2k LOC budget. Awaiting user go-ahead.
 
 ## Round 4 queue (remaining meaningful work)
-1. **Petdex pack loader** (proposed, awaiting user go): import any pet.json+spritesheet.webp from user folder / petdex.dev manifest. Solves LPC-cat variety permanently.
-2. **Native-stack proposal doc**: PySide6 vs WinUI vs TUI one-pager — only if user greenlights migration direction.
-3. **Release v0.6.2**: tag triggers exe workflow. Bundle R1-R3 fixes.
-4. Parked: nothing (unlock branches deleted 2026-08-23).
+1. **Petdex pack loader** — RESEARCHED, spec hardened (research/petdex-r4/SYNTHESIS.md): dimension-inference + alpha-scan frame counts + walking→running alias shim mandatory; naive parsing breaks on live packs. Ready to build on user go.
+2. **Native UI**: verdict = PySide6 incremental, control.html first (OpenAnima proof case; Tauri/Electron IPC cost documented in findings). User greenlight pending.
+3. **⚠ RELEASE GATE — bundled sprite licensing**: exe ships Pokemon/Doraemon/Gardevoir/Giratina fan art; galleries carry no license data; redistributor exposure > loader exposure. User must pick: replace roster with original/CC0 art vs accept risk. Gates v0.6.2+.
+4. Release v0.6.2 after gate decision.
+5. Parked: nothing.
 
 ## Session-end state
 All work committed+pushed through `3626e16`. Working tree clean except this HANDOFF edit. Next session: read this file, pick from Round 4 queue, continue loop until queue empty AND no reviewer/specialist can identify stronger alternative.
