@@ -2713,8 +2713,14 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
         // view instead of the nav (heading gets tabindex -1 on first switch)
         var head = document.querySelector("#view-" + name + " .view-head h2");
         if (head) { head.tabIndex = -1; head.focus(); }
-        if (name === "focus") refreshFocusSession();
-        if (name === "pets") refreshCompanion();
+        // polls skip hidden views, so each switch pulls fresh data for the
+        // view being shown (keeps the selftest's click-then-check contract)
+        if (name === "dash") { refreshSessions(); refreshGoal(); refreshDayBody(); refreshOrchard(); refreshPetState(); }
+        if (name === "focus") { refreshFocusSession(); refreshWellbeingHistory(); refreshActivity(); refreshInsights(); refreshWellbeing(); refreshPomo(); }
+        if (name === "story") { refreshWrapped(); refreshSparkline(); refreshWeekApps(); refreshMemory(); refreshLane(); refreshInsights(); refreshChrono(); }
+        if (name === "rituals") { refreshRituals(); refreshAlerts(); refreshBarter(); }
+        if (name === "pets") { refreshCompanion(); refreshProfile(); refreshHeatmap(); refreshPeaks(); refreshPetState(); }
+        if (name === "orchard") refreshOrchard();
       }
 
       document.querySelectorAll(".nav-item").forEach(function (b) {
@@ -4295,31 +4301,33 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
       }
       var confirmAt = 0;
 
-      setInterval(refreshSessions, 1500);
+      /* polls only fetch/render for the view showing them; refreshConfig is
+         cross-view state so it stays ungated */
+      setInterval(function () { if (state.view === "dash") refreshSessions(); }, 1500);
       setInterval(refreshConfig, 2500);
-      setInterval(refreshActivity, 3000);
-      setInterval(refreshWellbeing, 5000);
-      setInterval(refreshWellbeingHistory, 15000);
-      setInterval(refreshInsights, 15000);
+      setInterval(function () { if (state.view === "focus") refreshActivity(); }, 3000);
+      setInterval(function () { if (state.view === "focus") refreshWellbeing(); }, 5000);
+      setInterval(function () { if (state.view === "focus") refreshWellbeingHistory(); }, 15000);
+      setInterval(function () { if (state.view === "focus" || state.view === "story") refreshInsights(); }, 15000);
       setInterval(function () { if (state.view === "focus") refreshFocusSession(); }, 2500);
-      setInterval(refreshProfile, 10000);
-      setInterval(refreshGoal, 10000);
-      setInterval(refreshPomo, 10000);
-      setInterval(refreshMemory, 10000);
-      setInterval(refreshChrono, 10000);
-      setInterval(refreshDayBody, 10000);
-      setInterval(refreshRituals, 10000);
-      setInterval(refreshBarter, 10000);
-      setInterval(refreshOrchard, 10000);
-      setInterval(refreshLane, 15000);
-      setInterval(refreshWrapped, 20000);
-      setInterval(refreshSparkline, 30000);
-      setInterval(refreshWeekApps, 20000);
+      setInterval(function () { if (state.view === "pets") refreshProfile(); }, 10000);
+      setInterval(function () { if (state.view === "dash") refreshGoal(); }, 10000);
+      setInterval(function () { if (state.view === "focus") refreshPomo(); }, 10000);
+      setInterval(function () { if (state.view === "story") refreshMemory(); }, 10000);
+      setInterval(function () { if (state.view === "story") refreshChrono(); }, 10000);
+      setInterval(function () { if (state.view === "dash") refreshDayBody(); }, 10000);
+      setInterval(function () { if (state.view === "rituals") refreshRituals(); }, 10000);
+      setInterval(function () { if (state.view === "rituals") refreshBarter(); }, 10000);
+      setInterval(function () { if (state.view === "dash" || state.view === "orchard") refreshOrchard(); }, 10000);
+      setInterval(function () { if (state.view === "story") refreshLane(); }, 15000);
+      setInterval(function () { if (state.view === "story") refreshWrapped(); }, 20000);
+      setInterval(function () { if (state.view === "story") refreshSparkline(); }, 30000);
+      setInterval(function () { if (state.view === "story") refreshWeekApps(); }, 20000);
       setInterval(function () { if (state.view === "pets") refreshCompanion(); }, 15000);
-      setInterval(refreshHeatmap, 30000);
-      setInterval(refreshPeaks, 15000);
-      setInterval(refreshPetState, 2000);
-      setInterval(refreshAlerts, 15000);
+      setInterval(function () { if (state.view === "pets") refreshHeatmap(); }, 30000);
+      setInterval(function () { if (state.view === "pets") refreshPeaks(); }, 15000);
+      setInterval(function () { if (state.view === "dash" || state.view === "pets") refreshPetState(); }, 2000);
+      setInterval(function () { if (state.view === "rituals") refreshAlerts(); }, 15000);
       load();
     })();
   </script>

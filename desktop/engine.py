@@ -1,4 +1,4 @@
-﻿"""PetEngine: physics, sprite slicing, state resolution, focus/growth logic.
+"""PetEngine: physics, sprite slicing, state resolution, focus/growth logic.
 
 Renders via win32.PetWindow. OS activity (last_input_ms/foreground_app) is
 resolved through the desktop.main namespace at call time so the test suite's
@@ -6,15 +6,30 @@ monkeypatches on main.last_input_ms keep working.
 """
 
 import datetime
+import functools
 import json
 import math
 import os
 import random
+import threading
 import time
-
 from PIL import Image, ImageDraw, ImageFont
-
 from . import sounds, sprites, store, win32
+
+
+def _locked(fn):
+    """Serialize a mutator across the threads that drive PetEngine (render
+    loop, file watcher, win32 pump, tray, timers). RLock: locked methods call
+    each other (update_sessions -> _award_xp -> _say). Bare/legacy instances
+    built without a full __init__ (tests) get a lazily attached lock."""
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        lock = self.__dict__.get("_lock")
+        if lock is None:
+            lock = self.__dict__.setdefault("_lock", threading.RLock())
+        with lock:
+            return fn(self, *args, **kwargs)
+    return wrapper
 
 # ---------------------------------------------------------------- focus sessions
 FOCUS_DEFAULT_MIN = 25
@@ -203,6 +218,7 @@ class PetEngine:
         self.bubble_text = ""
         self.bubble_until = 0.0
         self.bubble_pri = 0    # 1 ambient chatter, 2 reactive state lines, 3 milestone events
+        self._lock = threading.RLock()  # see _locked: engine is driven from >=4 threads
         self.running = True
         self._frame_cache = {}
         self._last_act = 0.0
@@ -464,6 +480,7 @@ class PetEngine:
     def _focus_progress(self):
         return store.focus_progress(self.focus_active, self.focus_started, self.focus_target_min)
 
+    @_locked
     def start_focus(self, minutes=None):
         """Begin a focus session. The sprout grows while the user stays in one
         app; leaving wilts it. Completing awards XP."""
@@ -484,6 +501,7 @@ class PetEngine:
         self._chime("start")
         return True
 
+    @_locked
     def stop_focus(self, completed=False):
         if not self.focus_active and not completed:
             return False
@@ -582,6 +600,7 @@ class PetEngine:
             pass
         self.cfg.update(keys)
 
+    @_locked
     def _award_xp(self, amount, reason):
         self.xp += amount
         leveled = False
@@ -862,6 +881,7 @@ class PetEngine:
         except Exception:
             return None
 
+    @_locked
     def set_pet(self, idx):
         idx %= len(sprites.PETS)
         self.cfg["petIdx"] = idx
@@ -900,6 +920,7 @@ class PetEngine:
     def set_walk(self, pct):
         self.walk_factor = max(0.0, min(1.0, pct / 100.0))
 
+    @_locked
     def poke(self):
         """Single click â€” a small surprised hop. Physics does the arc."""
         p = self.phys
@@ -910,6 +931,7 @@ class PetEngine:
             self._last_poke_log = time.time()
             self._log("poke")
 
+    @_locked
     def jump(self):
         """Double click — a real leap."""
         if not self.dragging:
@@ -917,6 +939,7 @@ class PetEngine:
             self.phys["grounded"] = False
         self._log("jump")
 
+    @_locked
     def walk_toward(self, direction):
         """Directional control (arrow keys + follow-cursor): 'left'/'right'
         start a walk in that direction (the existing walk physics ends it
@@ -937,6 +960,34 @@ class PetEngine:
     def set_topmost(self, on):
         self.win.set_topmost(on)
 
+    # ---------------------------------------------- drag (win32 pump thread)
+    @_locked
+    def drag_start(self):
+        """Mouse-down on the pet (pump thread): pin Y and enter drag mode."""
+        self.dragging = True
+        self.phys["pinned_y"] = True
+
+    @_locked
+    def drag_to(self, nx, ny):
+        """Move the pet while dragging (pump thread)."""
+        self.phys["x"] = nx
+        self.phys["y"] = ny
+        self._last_pos = (nx, ny)
+
+    @_locked
+    def drag_end(self, area, frame_w, frame_h):
+        """Mouse-up: drop the pin and clamp back inside the work area."""
+        self.dragging = False
+        self.phys.pop("pinned_y", None)
+        if area:
+            l, t, r, b = area
+            px = max(l, min(int(self.phys["x"]), int(r - frame_w)))
+            py = max(t, min(int(self.phys["y"]), int(b - frame_h)))
+            self.phys["x"] = px
+            self.phys["y"] = py
+            self._last_pos = (px, py)
+
+    @_locked
     def set_visible(self, vis):
         if vis:
             self.win.show()
@@ -1337,6 +1388,7 @@ class PetEngine:
         ],
     }
 
+    @_locked
     def update_sessions(self, sessions):
         # BUG-3: preserve the last-known emotion whenever the top (most recent)
         # session goes stale or disappears, so a timed-out session keeps showing
@@ -1386,6 +1438,7 @@ class PetEngine:
             elif st == "busy" and tool:
                 self._earn_tool_xp(tool)
 
+    @_locked
     def config_watch(self):
         """Apply config + one-shot commands written by the control app (separate process)."""
         try:
@@ -1494,6 +1547,7 @@ class PetEngine:
         if touched:
             store.save_config(touched)
 
+    @_locked
     def flush_state(self):
         """Persist everything in-memory before a hard exit: os._exit skips
         atexit/finally blocks, so without this up to WELLBEING_SAVE_INTERVAL
@@ -1672,6 +1726,7 @@ class PetEngine:
     BUBBLE_PRI_REACTIVE = 2
     BUBBLE_PRI_MILESTONE = 3
 
+    @_locked
     def _say(self, text, secs, pri=BUBBLE_PRI_REACTIVE, now=None):
         """Show a bubble unless a HIGHER-priority bubble is still live.
         Equal priority may replace (state transitions should update). Returns
@@ -1687,6 +1742,7 @@ class PetEngine:
         self.bubble_pri = pri
         return True
 
+    @_locked
     def _clear_bubble(self, now=None):
         """Clear the bubble unless a milestone/reactive one is still live."""
         now = now if now is not None else time.time()

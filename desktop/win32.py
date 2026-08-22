@@ -275,11 +275,7 @@ class PetWindow:
         self._down_pt = (pt.x, pt.y)
         self._down_t = time.monotonic()
         if self.engine:
-            self.engine.dragging = True
-            # Pin the pet vertically so _phys() doesn't snap it back to the
-            # floor on the next tick — this lets the user place the pet
-            # anywhere in the window, not just on the bottom axis.
-            self.engine.phys["pinned_y"] = True
+            self.engine.drag_start()
             # Grab keyboard focus ONLY when arrows are enabled — stealing
             # focus from the user's active app on every pet click is hostile
             # (their typing would be dropped by the pet window).
@@ -317,9 +313,7 @@ class PetWindow:
             cx, cy, wx, wy = self._drag
             nx = wx + (pt.x - cx)
             ny = wy + (pt.y - cy)
-            self.engine.phys["x"] = nx
-            self.engine.phys["y"] = ny
-            self.engine._last_pos = (nx, ny)
+            self.engine.drag_to(nx, ny)
             self.move(nx, ny)
         return 0
 
@@ -327,21 +321,12 @@ class PetWindow:
         if self._drag:
             self._drag = None
             if self.engine:
-                self.engine.dragging = False
-                # Unpin — physics can resume normal floor snapping after
-                # the user releases the pet.
-                self.engine.phys.pop("pinned_y", None)
-                # Clamp into the workspace so the pet never drifts off-screen
-                # after a drag-and-drop near an edge.
-                l, t, r, b = self.engine.area
+                # Unpin + clamp back into the workspace in one locked step so
+                # the render tick can never interleave with the release.
                 w = self.engine.pet["frameW"] * self.engine.pet["scale"]
                 h = self.engine.pet["frameH"] * self.engine.pet["scale"]
-                px = max(l, min(int(self.engine.phys["x"]), r - w))
-                py = max(t, min(int(self.engine.phys["y"]), b - h))
-                self.engine.phys["x"] = px
-                self.engine.phys["y"] = py
-                self.engine._last_pos = (px, py)
-                self.move(px, py)
+                self.engine.drag_end(self.engine.area, w, h)
+                self.move(int(self.engine.phys["x"]), int(self.engine.phys["y"]))
             user32.ReleaseCapture()
         if self._down_pt is not None:
             pt = POINT()
