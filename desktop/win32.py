@@ -35,6 +35,7 @@ WM_MOVE = 0x0003
 WM_DESTROY = 0x0002
 WM_HOTKEY = 0x0312
 WM_KEYDOWN = 0x0100
+WM_DISPLAYCHANGE = 0x0126
 HTCAPTION = 2
 HTCLIENT = 1
 GW_HINSTANCE = -6
@@ -48,6 +49,8 @@ VK_UP = 0x26
 VK_RIGHT = 0x27
 
 SPI_GETWORKAREA = 0x0030
+# SPI_GETWORKAREA is primary-monitor-only; per-monitor bounds come from
+# EnumDisplayMonitors + GetMonitorInfoW instead (see monitor_workarea_for).
 
 # click/drag detection
 CLICK_MOVE_MAX = 6      # px of movement tolerated before a click is a drag
@@ -68,6 +71,11 @@ class POINT(ctypes.Structure):
 
 class SIZE(ctypes.Structure):
     _fields_ = [("cx", ctypes.c_long), ("cy", ctypes.c_long)]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
 
 
 class MSG(ctypes.Structure):
@@ -111,6 +119,9 @@ class LASTINPUTINFO(ctypes.Structure):
 
 
 WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+
+MONITORENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HDC, ctypes.POINTER(RECT),
+                                     wintypes.HMONITOR, wintypes.LPARAM)
 
 # --- argtypes (prevents 64-bit pointer overflow on lParam/WPARAM) ---
 user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
@@ -188,6 +199,10 @@ user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintyp
 user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 user32.SystemParametersInfoW.argtypes = [wintypes.UINT, wintypes.UINT, wintypes.LPVOID, wintypes.UINT]
 user32.SystemParametersInfoW.restype = wintypes.BOOL
+user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.POINTER(RECT), MONITORENUMPROC, wintypes.LPARAM]
+user32.EnumDisplayMonitors.restype = wintypes.BOOL
+user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+user32.GetMonitorInfoW.restype = wintypes.BOOL
 user32.GetLastInputInfo.argtypes = [ctypes.POINTER(LASTINPUTINFO)]
 user32.GetLastInputInfo.restype = wintypes.BOOL
 
@@ -251,6 +266,8 @@ class PetWindow:
             return self._on_lbutton_up(hwnd)
         if msg == WM_KEYDOWN:
             return self._on_key_down(wp)
+        if msg == WM_DISPLAYCHANGE:
+            return self._on_display_change()
         if msg == WM_DESTROY:
             user32.PostQuitMessage(0)
             return 0
@@ -317,15 +334,26 @@ class PetWindow:
             self.move(nx, ny)
         return 0
 
+    def _on_display_change(self):
+        """Dock/undock or resolution change invalidates the cached bounds:
+        re-read the monitor under the pet (primary fallback) and pull it
+        inside immediately, or a removed secondary strands it off-screen
+        until restart. Engine-side, so physics clamps use the fresh area."""
+        eng = self.engine
+        if eng:
+            try:
+                eng.refresh_area(monitor_workarea_for(int(eng.phys["x"]), int(eng.phys["y"])))
+            except Exception:
+                eng.refresh_area(workarea())
+        return 0
+
     def _on_lbutton_up(self, hwnd):
         if self._drag:
             self._drag = None
             if self.engine:
-                # Unpin + clamp back into the workspace in one locked step so
-                # the render tick can never interleave with the release.
-                w = self.engine.pet["frameW"] * self.engine.pet["scale"]
-                h = self.engine.pet["frameH"] * self.engine.pet["scale"]
-                self.engine.drag_end(self.engine.area, w, h)
+                # Unpin + clamp into the monitor the pet is ON, in one locked
+                # step so the render tick can never interleave with release.
+                self.engine.drag_end()
                 self.move(int(self.engine.phys["x"]), int(self.engine.phys["y"]))
             user32.ReleaseCapture()
         if self._down_pt is not None:
@@ -443,6 +471,43 @@ def workarea():
     r = RECT()
     user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(r), 0)
     return r.left, r.top, r.right, r.bottom
+
+
+def _monitor_info(hmon):
+    """Workarea tuple for one monitor handle, or None if info is unavailable."""
+    mi = MONITORINFO()
+    mi.cbSize = ctypes.sizeof(MONITORINFO)
+    if not user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+        return None
+    rc = mi.rcWork
+    return (int(rc.left), int(rc.top), int(rc.right), int(rc.bottom))
+
+
+def monitor_workarea_for(x, y):
+    """Workarea (l, t, r, b) of the monitor containing screen point (x, y).
+
+    SPI_GETWORKAREA only describes the PRIMARY monitor: clamping against it
+    snapped a pet released on any other display back to primary and made
+    left-placed negative-coordinate monitors unreachable. Enumerate every
+    monitor instead and use the one holding the point; when enumeration fails
+    or no monitor contains the point (e.g. its display was just unplugged),
+    fall back to the primary workarea so callers always get usable bounds."""
+    found = []
+
+    def _on_mon(_hdc, _rect, hmon, _data):
+        info = _monitor_info(hmon)
+        if info:
+            found.append(info)
+        return True
+
+    try:
+        if user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(_on_mon), 0):
+            for l, t, r, b in found:
+                if l <= x < r and t <= y < b:
+                    return l, t, r, b
+    except Exception:
+        pass
+    return workarea()
 
 
 # ---------------------------------------------------------------- activity + status

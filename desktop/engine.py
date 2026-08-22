@@ -975,17 +975,45 @@ class PetEngine:
         self._last_pos = (nx, ny)
 
     @_locked
-    def drag_end(self, area, frame_w, frame_h):
-        """Mouse-up: drop the pin and clamp back inside the work area."""
+    def drag_end(self, area=None, frame_w=None, frame_h=None):
+        """Mouse-up: drop the pin and clamp into the workspace.
+
+        No explicit area => clamp into the monitor the pet is currently ON.
+        Boot-time self.area describes only the primary monitor's workarea,
+        so using it unconditionally snapped pets released on a secondary
+        display back across to primary. Explicit area/frame sizes are kept
+        for callers (and tests) that pass them."""
         self.dragging = False
         self.phys.pop("pinned_y", None)
+        if area is None:
+            try:
+                area = win32.monitor_workarea_for(self.phys["x"], self.phys["y"])
+            except Exception:
+                area = None
+        self._clamp_into(area or self.area, frame_w, frame_h)
+
+    def _clamp_into(self, area, frame_w=None, frame_h=None):
+        """Pull phys inside area using frame size (computed from the sprite
+        when not supplied); shared by mouse-up and display-change recovery."""
+        if not area:
+            return
+        fw = frame_w if frame_w is not None else self.pet["frameW"] * self.pet["scale"]
+        fh = frame_h if frame_h is not None else self.pet["frameH"] * self.pet["scale"]
+        l, t, r, b = area
+        px = max(l, min(int(self.phys["x"]), int(r - fw)))
+        py = max(t, min(int(self.phys["y"]), int(b - fh)))
+        self.phys["x"] = px
+        self.phys["y"] = py
+        self._last_pos = (px, py)
+
+    @_locked
+    def refresh_area(self, area):
+        """Adopt new workspace bounds and pull the pet inside immediately —
+        WM_DISPLAYCHANGE may have deleted the monitor the pet lived on, and
+        waiting for the next physics tick would strand it off-screen."""
         if area:
-            l, t, r, b = area
-            px = max(l, min(int(self.phys["x"]), int(r - frame_w)))
-            py = max(t, min(int(self.phys["y"]), int(b - frame_h)))
-            self.phys["x"] = px
-            self.phys["y"] = py
-            self._last_pos = (px, py)
+            self.area = area
+            self._clamp_into(area)
 
     @_locked
     def set_visible(self, vis):
