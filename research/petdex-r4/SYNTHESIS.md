@@ -50,6 +50,25 @@ b) Accept risk as a hobby project (documented);
 c) Ask Petdex-style galleries how they position it.
 This gates v0.6.2/v0.7 releases more than any code question.
 
+## Iteration 2 — the ACTUAL buzz: Grok Companions (user correction)
+
+The user meant the **Grok Companion wave (Jul 2025)** — Ani / Bad Rudy /
+Valentine — not pixel-sheet galleries. Decoded:
+
+- **What it is**: 3D avatars animated on-device in real time; engineers noted
+  xAI does NOT drive them with preset Live2D/VRM clips — language output maps
+  directly to motion ("Any2Any"). The moat is generative rigging, NOT a
+  reusable asset library. Nothing to adopt from it directly.
+- **Usable expressive-2D stacks for us**:
+  | Stack | License | Fit |
+  |---|---|---|
+  | Live2D Cubism models + `pixi-live2d-display` (1.5k★) | runtime MIT; editor/models proprietary, publishing needs SDK license | fastest to "wow", licensing friction |
+  | Inochi2D + nijigenerate + inox2d | BSD-2-Clause, fully open pipeline | rig our own pet freely; more authoring work |
+  | More sprite emotion states (current format) | none needed | cheap win now |
+- **Twitter tooling note**: twitter-cli broken (X ClientTransaction change),
+  OpenCLI profile offline — findings sourced via Exa-indexed coverage +
+  GitHub probing instead. OPEN: raw tweet-vertex sentiment.
+
 ## OPEN items
 - stateDurations semantics (agent-pet extension) — read its state_machine.rs if we adopt the field.
 - v2 rows 9-10 canonical purpose (look-directions vs reserved) — irrelevant to loader (ignore them).
